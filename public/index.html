@@ -218,7 +218,8 @@
   </div>
 
   <script>
-    const { createApp, ref, computed, onMounted, updated } = Vue;
+    // Correggiamo le importazioni: onUpdated, non "updated"
+    const { createApp, ref, computed, onMounted, onUpdated } = Vue;
 
     createApp({
       setup() {
@@ -233,6 +234,7 @@
         const fetchCoins = async () => {
           try {
             const res = await fetch('catalog.json');
+            if (!res.ok) throw new Error(`HTTP status ${res.status}`);
             coins.value = await res.json();
           } catch (e) {
             console.error("Errore durante il caricamento di catalog.json:", e);
@@ -244,18 +246,18 @@
 
         const availableCountries = computed(() => {
           const set = new Set(coins.value.map(c => c.country));
-          return Array.from(set).sort();
+          return Array.from(set).filter(Boolean).sort();
         });
 
         const availableYears = computed(() => {
           const set = new Set(coins.value.map(c => c.year));
-          return Array.from(set).sort((a, b) => b - a);
+          return Array.from(set).filter(Boolean).sort((a, b) => b - a);
         });
 
         const filteredCoins = computed(() => {
           return coins.value.filter(c => {
             const matchesSearch = !searchQuery.value || 
-              c.title.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+              (c.title && c.title.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
               (c.description && c.description.toLowerCase().includes(searchQuery.value.toLowerCase()));
             const matchesCountry = !selectedCountry.value || c.country === selectedCountry.value;
             const matchesYear = !selectedYear.value || c.year == selectedYear.value;
@@ -277,7 +279,7 @@
         };
 
         const formatNumber = (num) => {
-          return new Intl.NumberFormat('it-IT').format(num);
+          return new Intl.NumberFormat('it-IT').format(num || 0);
         };
 
         const openModal = (coin) => {
@@ -290,14 +292,19 @@
         };
 
         const refreshIcons = () => {
-          setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 50);
+          setTimeout(() => { 
+            if (window.lucide) {
+              lucide.createIcons();
+            }
+          }, 50);
         };
 
         onMounted(() => {
           fetchCoins();
         });
 
-        updated(() => {
+        // Usiamo l'hook corretto
+        onUpdated(() => {
           refreshIcons();
         });
 
