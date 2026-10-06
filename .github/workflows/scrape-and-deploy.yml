@@ -2,16 +2,22 @@ name: Automatic Coin Scraping & Build
 
 on:
   schedule:
-    # Gira automaticamente ogni domenica a mezzanotte
     - cron: '0 0 * * 0'
-  workflow_dispatch: # Ti permette di lanciarlo manualmente con un click da GitHub!
+  workflow_dispatch:
+
+# 1. ESPLICITIAMO I PERMESSI DI SCRITTURA NEL WORKFLOW
+permissions:
+  contents: write
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
+      # 2. DIAMO IL TOKEN DI AUTENTICAZIONE A CHECKOUT
       - name: Checkout Codice
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -28,9 +34,15 @@ jobs:
 
       - name: Commit e Push del catalog.json aggiornato
         run: |
-          git config --global user.name "EuroCollector-Bot"
-          git config --global user.email "bot@eurocollector.local"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           mkdir -p public
           git add public/catalog.json
-          git status
-          git diff --staged --quiet || (git commit -m "chore: aggiornamento automatico catalogo monete" && git push)
+          
+          # Se ci sono modifiche fa il commit e push, altrimenti passa oltre senza fallire
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: aggiornamento automatico catalogo monete"
+            git push
+          else
+            echo "Nessuna modifica rilevata nel catalogo."
+          fi
