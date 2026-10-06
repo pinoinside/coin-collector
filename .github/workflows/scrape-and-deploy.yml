@@ -5,7 +5,6 @@ on:
     - cron: '0 0 * * 0'
   workflow_dispatch:
 
-# 1. ESPLICITIAMO I PERMESSI DI SCRITTURA NEL WORKFLOW
 permissions:
   contents: write
 
@@ -13,7 +12,6 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
-      # 2. DIAMO IL TOKEN DI AUTENTICAZIONE A CHECKOUT
       - name: Checkout Codice
         uses: actions/checkout@v4
         with:
@@ -36,13 +34,18 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p public
-          git add public/catalog.json
           
-          # Se ci sono modifiche fa il commit e push, altrimenti passa oltre senza fallire
-          if ! git diff --staged --quiet; then
-            git commit -m "chore: aggiornamento automatico catalogo monete"
-            git push
+          # Verifica se il file esiste prima di fare git add
+          if [ -f "public/catalog.json" ]; then
+            git add public/catalog.json
+            
+            if ! git diff --staged --quiet; then
+              git commit -m "chore: aggiornamento automatico catalogo monete"
+              git push
+            else
+              echo "Nessuna modifica rilevata nel catalogo."
+            fi
           else
-            echo "Nessuna modifica rilevata nel catalogo."
+            echo "ERRORE: Il file public/catalog.json non esiste!"
+            exit 1
           fi
