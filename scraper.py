@@ -12,10 +12,11 @@ HEADERS = {
 CURRENT_YEAR = datetime.now().year
 BASE_URL = "https://it.wikipedia.org"
 
-# Mappatura completa dei paesi (Italiano/Inglese/Nomi comuni -> ISO)
+# Mappatura completa e pulita dei paesi dell'Eurozona
 COUNTRY_MAP = {
     "andorra": "AD", "austria": "AT", "belgio": "BE", "belgium": "BE",
-    "cipro": "CY", "cyprus": "CY", "estonia": "EE", "finlandia": "FI", "finland": "FI",
+    "cipro": "CY", "cyprus": "CY", "croazia": "HR", "croatia": "HR",
+    "estonia": "EE", "finlandia": "FI", "finland": "FI",
     "francia": "FR", "france": "FR", "germania": "DE", "germany": "DE",
     "grecia": "GR", "greece": "GR", "irlanda": "IE", "ireland": "IE",
     "italia": "IT", "italy": "IT", "lettonia": "LV", "latvia": "LV",
@@ -31,21 +32,19 @@ def clean_text(text):
     return " ".join(text.strip().split())
 
 def detect_country(text):
-    """Identifica il codice ISO del paese da una stringa di testo."""
+    """Riconosce il codice ISO a 2 lettere dal testo del Paese o dell'intestazione."""
     if not text:
         return None
     text_lower = text.lower()
-    
     for name, code in COUNTRY_MAP.items():
         if re.search(r'\b' + re.escape(name) + r'\b', text_lower):
             return code
     return None
 
 def get_yearly_page_urls():
-    """Recupera i link alle pagine dei singoli anni da Wikipedia o li genera dinamicamente."""
-    main_url = f"{BASE_URL}/wiki/2_euro_commemorativi"
-    print(f"Tentativo di recupero indice anni da {main_url}...")
+    """Genera ed esplora gli URL per tutti gli anni dal 2004 ad oggi."""
     urls = []
+    main_url = f"{BASE_URL}/wiki/2_euro_commemorativi"
     
     try:
         res = requests.get(main_url, headers=HEADERS, timeout=15)
@@ -58,18 +57,16 @@ def get_yearly_page_urls():
                     if full_url not in urls:
                         urls.append(full_url)
     except Exception as e:
-        print(f"Avviso: Impossibile scaricare l'indice principale ({e}). Passo alla generazione dinamica degli URL.")
+        print(f"Avviso durante il recupero dell'indice: {e}")
 
-    # FALLBACK: Se l'indice non restituisce URL, li generiamo con il pattern corretto
+    # Fallback per garantire che tutti gli anni vengano scansionati
     if not urls:
-        print("Generazione dinamica degli URL con il pattern 'emessi_nel_'...")
         for yr in range(2004, CURRENT_YEAR + 2):
             urls.append(f"{BASE_URL}/wiki/2_euro_commemorativi_emessi_nel_{yr}")
 
     return sorted(list(set(urls)))
 
 def scrape_year_page(url):
-    """Estrae le monete da una specifica sotto-pagina annuale."""
     year_match = re.search(r'\d{4}', url)
     year = int(year_match.group(0)) if year_match else CURRENT_YEAR
     
@@ -78,7 +75,6 @@ def scrape_year_page(url):
     try:
         res = requests.get(url, headers=HEADERS, timeout=15)
         if res.status_code != 200:
-            print(f"Pagina per l'anno {year} non trovata o non disponibile (HTTP {res.status_code}).")
             return []
             
         soup = BeautifulSoup(res.content, "html.parser")
@@ -89,10 +85,10 @@ def scrape_year_page(url):
         coins = []
         current_country = None
 
+        # Scorriamo il DOM per catturare il Paese dalle sezioni h2/h3/h4 o dalle tabelle
         for elem in content.find_all(["h2", "h3", "h4", "table"]):
             if elem.name in ["h2", "h3", "h4"]:
-                header_text = elem.get_text()
-                detected = detect_country(header_text)
+                detected = detect_country(elem.get_text())
                 if detected:
                     current_country = detected
 
@@ -105,32 +101,52 @@ def scrape_year_page(url):
                     
                     row_text = clean_text(row.get_text())
                     
-                    # Salta le righe di intestazione
-                    if "Soggetto" in row_text or "Paese" in row_text or "Tiratura" in row_text:
+                    # Salta righe di intestazione della tabella
+                    if any(header in row_text for header in ["Soggetto", "Tiratura", "Data di emissione", "Immagine"]):
                         continue
 
-                    # Determina il Paese
+                    # 1. Identificazione Paese
                     row_country = detect_country(row_text)
                     coin_country = row_country if row_country else current_country
                     if not coin_country:
+                        # Se ancora non trovato, cerca nella prima/seconda colonna
+                        for col in cols[:2]:
+                            found = detect_country(col.get_text())
+                            if found:
+                                coin_country = found
+                                break
+                    
+                    if not coin_country:
                         coin_country = "EU"
 
-                    # Estrai Titolo / Descrizione
+                    # 2. Estrazione Titolo
                     title = ""
+                    # Cerca prima link o testo significativo nelle colonne
                     for col in cols:
-                        cell_text = clean_text(col.get_text())
-                        cell_text = re.sub(r'\[\d+\]', '', cell_text)
-                        
-                        if len(cell_text) > 8 and not cell_text.isdigit() and "euro" not in cell_text.lower():
-                            if detect_country(cell_text) and len(cell_text) < 25:
-                                continue
-                            title = cell_text
-                            break
+                        # Se la colonna contiene un link interno, spesso è il soggetto
+                        a_tag = col.find("a")
+                        if a_tag and a_tag.get_text():
+                            candidate = clean_text(a_tag.get_text())
+                            candidate = re.sub(r'\[\d+\]', '', candidate)
+                            if len(candidate) > 3 and not candidate.isdigit() and not detect_country(candidate):
+                                title = candidate
+                                break
 
+                    # Se non trovato tramite link, estrai dal testo puro della riga
+                    if not title:
+                        for col in cols:
+                            cell_text = clean_text(col.get_text())
+                            cell_text = re.sub(r'\[\d+\]', '', cell_text)
+                            if len(cell_text) > 4 and not cell_text.isdigit() and "euro" not in cell_text.lower():
+                                if not detect_country(cell_text):
+                                    title = cell_text
+                                    break
+
+                    # Fallback estremo per il titolo
                     if not title:
                         title = f"2€ Commemorativo {coin_country} {year}"
 
-                    # Estrai Tiratura (Mintage)
+                    # 3. Estrazione Tiratura
                     mintage = 0
                     numbers = re.findall(r'\b\d{1,3}(?:\.\d{3})+|\b\d{5,8}\b', row_text)
                     if numbers:
@@ -138,61 +154,65 @@ def scrape_year_page(url):
                         if clean_num:
                             mintage = int(clean_num)
 
-                    # Determina lo Stato (issued vs announced)
+                    # 4. Stato (issued vs announced)
                     is_future = year > CURRENT_YEAR
                     is_announced_kw = any(kw in row_text.lower() for kw in ["annunciata", "in emissione", "da emettere", "tba", "da definire"])
                     has_mintage = mintage > 0
 
                     status = "announced" if (is_future or is_announced_kw or (year == CURRENT_YEAR and not has_mintage)) else "issued"
 
-                    # Generazione ID deterministico
-                    slug = re.sub(r'[^a-zA-Z0-9]', '', title)[:12].upper()
-                    coin_id = f"EU-{coin_country}-{year}-2E-{slug}"
-
-                    if not any(c["id"] == coin_id for c in coins):
-                        coins.append({
-                            "id": coin_id,
-                            "country": coin_country,
-                            "year": year,
-                            "denomination": "2.00",
-                            "type": "commemorative",
-                            "status": status,
-                            "title": title[:150],
-                            "mint_mark": "",
-                            "mintage": mintage,
-                            "designer": "",
-                            "image_url": "",
-                            "variants": []
-                        })
+                    coins.append({
+                        "country": coin_country,
+                        "year": year,
+                        "denomination": "2.00",
+                        "type": "commemorative",
+                        "status": status,
+                        "title": title[:150],
+                        "mint_mark": "",
+                        "mintage": mintage,
+                        "designer": "",
+                        "image_url": "",
+                        "variants": []
+                    })
         return coins
 
     except Exception as e:
-        print(f"Errore durante lo scraping di {url}: {e}")
+        print(f"Errore nello scraping di {url}: {e}")
         return []
 
 def main():
     os.makedirs("public", exist_ok=True)
     yearly_urls = get_yearly_page_urls()
-    print(f"Trovate/Generate {len(yearly_urls)} pagine annuali da esaminare.")
+    print(f"Analisi di {len(yearly_urls)} pagine annuali...")
 
-    all_coins = []
+    raw_coins = []
     for url in yearly_urls:
         coins = scrape_year_page(url)
-        all_coins.extend(coins)
+        raw_coins.extend(coins)
 
-    # Rimuovi eventuali duplicati
-    unique_coins = []
-    seen_ids = set()
-    for coin in all_coins:
-        if coin["id"] not in seen_ids:
-            seen_ids.add(coin["id"])
-            unique_coins.append(coin)
+    # Rimuovi eventuali duplicati esatti basandoci su (paese, anno, titolo)
+    final_coins = []
+    seen = set()
 
-    if unique_coins:
+    # Assegnazione di ID progressivi (1, 2, 3...)
+    current_id = 1
+
+    for coin in raw_coins:
+        identifier = (coin["country"], coin["year"], coin["title"].lower())
+        if identifier not in seen:
+            seen.add(identifier)
+            
+            # Assegna l'ID numerico come stringa o intero
+            coin["id"] = str(current_id)
+            current_id += 1
+            
+            final_coins.append(coin)
+
+    if final_coins:
         output_path = "public/catalog.json"
         with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(unique_coins, f, ensure_ascii=False, indent=2)
-        print(f"\nCOMPLETATO: Salvate {len(unique_coins)} monete in '{output_path}'!")
+            json.dump(final_coins, f, ensure_ascii=False, indent=2)
+        print(f"\nCOMPLETATO: Salvate {len(final_coins)} monete con ID progressivo da 1 a {len(final_coins)} in '{output_path}'!")
     else:
         print("ATTENZIONE: Nessuna moneta estratta.")
 
