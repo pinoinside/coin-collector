@@ -26,9 +26,11 @@ jobs:
         run: |
           python scraper.py
 
-      - name: Commit e Push del `catalog.json` aggiornato
+      - name: Commit e Push del catalog.json aggiornato
         run: |
           git config --global user.name "EuroCollector-Bot"
           git config --global user.email "bot@eurocollector.local"
+          mkdir -p public
           git add public/catalog.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: aggiornamento automatico catalogo monete" && git push)
+          git status
+          git diff --staged --quiet || (git commit -m "chore: aggiornamento automatico catalogo monete" && git push)
