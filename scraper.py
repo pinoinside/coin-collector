@@ -26,15 +26,23 @@ COUNTRY_MAP = {
     "slovenia": "SI", "spagna": "ES", "spain": "ES", "vaticano": "VA", "città del vaticano": "VA", "vatican": "VA"
 }
 
-def clean_text(text):
-    """Sostituisce gli a capo con spazi e pulisce il testo da note ed eccedenze."""
-    if not text:
+def clean_element_text(element):
+    """Sostituisce i tag <br> con uno spazio nell'elemento BS4 prima di estrarne il testo."""
+    if not element:
         return ""
-    # Sostituisce a capo e tabulazioni con spazi singoli
-    text = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
-    # Rimuove le note numeriche di Wikipedia [1], [2], ecc.
+    
+    # Crea una copia per non alterare distruttivamente altri passaggi se riutilizzati
+    element_copy = BeautifulSoup(str(element), "html.parser")
+    
+    # Sostituisce qualsiasi tag <br> (indipendentemente da id, class o attributi) con uno spazio
+    for br in element_copy.find_all("br"):
+        br.replace_with(" ")
+        
+    text = element_copy.get_text()
+    
+    # Rimuove le note numeriche di Wikipedia tipo [1], [2]
     text = re.sub(r'\[\d+\]', '', text)
-    # Rimuove spazi multipli e non-breaking space
+    # Pulisce spazi multipli, a capo rimanenti e non-breaking spaces
     return " ".join(text.replace('\xa0', ' ').strip().split())
 
 def detect_country(text):
@@ -62,7 +70,6 @@ def extract_image_url(cell):
     if not img_tag:
         return ""
     
-    # Prende preferibilmente src o data-src
     src = img_tag.get("src") or img_tag.get("data-src") or ""
     
     if src:
@@ -125,22 +132,21 @@ def scrape_year_page(url):
                 cols = row.select("td")
                 
                 if len(cols) >= 5:
-                    # Determina se la prima cella contiene l'immagine della moneta
                     has_img_col = bool(cols[0].find("img") or cols[0].has_attr("rowspan"))
                     image_url = extract_image_url(cols[0]) if has_img_col else ""
                     
                     offset = 1 if has_img_col else 0
                     
                     if len(cols) > offset + 3:
-                        raw_country = clean_text(cols[offset].get_text())
-                        raw_theme = clean_text(cols[offset + 1].get_text())
-                        raw_mintage = clean_text(cols[offset + 2].get_text())
-                        raw_issue_date = clean_text(cols[offset + 3].get_text())
-                        raw_designer = clean_text(cols[offset + 4].get_text()) if len(cols) > offset + 4 else ""
+                        raw_country = clean_element_text(cols[offset])
+                        raw_theme = clean_element_text(cols[offset + 1])
+                        raw_mintage = clean_element_text(cols[offset + 2])
+                        raw_issue_date = clean_element_text(cols[offset + 3])
+                        raw_designer = clean_element_text(cols[offset + 4]) if len(cols) > offset + 4 else ""
 
                         country_code = detect_country(raw_country)
                         if not country_code:
-                            country_code = detect_country(row.get_text()) or "EU"
+                            country_code = detect_country(clean_element_text(row)) or "EU"
 
                         mintage = parse_mintage(raw_mintage)
                         
@@ -150,13 +156,12 @@ def scrape_year_page(url):
                             next_row = rows[i + 1]
                             next_cols = next_row.select("td")
                             if len(next_cols) == 1 and ("Descrizione:" in next_row.get_text() or next_cols[0].has_attr("colspan")):
-                                description = clean_text(next_row.get_text())
+                                description = clean_element_text(next_cols[0])
                                 description = re.sub(r'^Descrizione:\s*', '', description, flags=re.IGNORECASE)
-                                i += 1 # Salta la riga della descrizione nel ciclo principale
+                                i += 1
 
-                        # Determina lo stato della moneta
                         is_future = year > CURRENT_YEAR
-                        is_announced_kw = any(kw in row.get_text().lower() for kw in ["annunciata", "in emissione", "da emettere", "tba", "da definire"])
+                        is_announced_kw = any(kw in clean_element_text(row).lower() for kw in ["annunciata", "in emissione", "da emettere", "tba", "da definire"])
                         has_mintage = mintage > 0
 
                         status = "announced" if (is_future or is_announced_kw or (year == CURRENT_YEAR and not has_mintage)) else "issued"
@@ -210,7 +215,7 @@ def main():
         output_path = "public/catalog.json"
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(final_coins, f, ensure_ascii=False, indent=2)
-        print(f"\nCOMPLETATO: Salvate {len(final_coins)} monete con immagini e titoli puliti in '{output_path}'!")
+        print(f"\nCOMPLETATO: Salvate {len(final_coins)} monete in '{output_path}'!")
     else:
         print("ATTENZIONE: Nessuna moneta estratta.")
 
