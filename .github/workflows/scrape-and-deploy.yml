@@ -1,0 +1,34 @@
+name: Automatic Coin Scraping & Build
+
+on:
+  schedule:
+    # Gira automaticamente ogni domenica a mezzanotte
+    - cron: '0 0 * * 0'
+  workflow_dispatch: # Ti permette di lanciarlo manualmente con un click da GitHub!
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codice
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installa Dipendenze
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Esegui lo Scraper
+        run: |
+          python scraper.py
+
+      - name: Commit e Push del `catalog.json` aggiornato
+        run: |
+          git config --global user.name "EuroCollector-Bot"
+          git config --global user.email "bot@eurocollector.local"
+          git add public/catalog.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: aggiornamento automatico catalogo monete" && git push)
