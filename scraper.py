@@ -60,7 +60,7 @@ def get_yearly_page_urls():
     except Exception as e:
         print(f"Avviso: Impossibile scaricare l'indice principale ({e}). Passo alla generazione dinamica degli URL.")
 
-    # FALLBACK: Se l'indice non restituisce URL, li generiamo col pattern corretto "emessi_nel_"
+    # FALLBACK: Se l'indice non restituisce URL, li generiamo con il pattern corretto
     if not urls:
         print("Generazione dinamica degli URL con il pattern 'emessi_nel_'...")
         for yr in range(2004, CURRENT_YEAR + 2):
@@ -135,4 +135,66 @@ def scrape_year_page(url):
                     numbers = re.findall(r'\b\d{1,3}(?:\.\d{3})+|\b\d{5,8}\b', row_text)
                     if numbers:
                         clean_num = re.sub(r'[^\d]', '', numbers[0])
-                        if
+                        if clean_num:
+                            mintage = int(clean_num)
+
+                    # Determina lo Stato (issued vs announced)
+                    is_future = year > CURRENT_YEAR
+                    is_announced_kw = any(kw in row_text.lower() for kw in ["annunciata", "in emissione", "da emettere", "tba", "da definire"])
+                    has_mintage = mintage > 0
+
+                    status = "announced" if (is_future or is_announced_kw or (year == CURRENT_YEAR and not has_mintage)) else "issued"
+
+                    # Generazione ID deterministico
+                    slug = re.sub(r'[^a-zA-Z0-9]', '', title)[:12].upper()
+                    coin_id = f"EU-{coin_country}-{year}-2E-{slug}"
+
+                    if not any(c["id"] == coin_id for c in coins):
+                        coins.append({
+                            "id": coin_id,
+                            "country": coin_country,
+                            "year": year,
+                            "denomination": "2.00",
+                            "type": "commemorative",
+                            "status": status,
+                            "title": title[:150],
+                            "mint_mark": "",
+                            "mintage": mintage,
+                            "designer": "",
+                            "image_url": "",
+                            "variants": []
+                        })
+        return coins
+
+    except Exception as e:
+        print(f"Errore durante lo scraping di {url}: {e}")
+        return []
+
+def main():
+    os.makedirs("public", exist_ok=True)
+    yearly_urls = get_yearly_page_urls()
+    print(f"Trovate/Generate {len(yearly_urls)} pagine annuali da esaminare.")
+
+    all_coins = []
+    for url in yearly_urls:
+        coins = scrape_year_page(url)
+        all_coins.extend(coins)
+
+    # Rimuovi eventuali duplicati
+    unique_coins = []
+    seen_ids = set()
+    for coin in all_coins:
+        if coin["id"] not in seen_ids:
+            seen_ids.add(coin["id"])
+            unique_coins.append(coin)
+
+    if unique_coins:
+        output_path = "public/catalog.json"
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(unique_coins, f, ensure_ascii=False, indent=2)
+        print(f"\nCOMPLETATO: Salvate {len(unique_coins)} monete in '{output_path}'!")
+    else:
+        print("ATTENZIONE: Nessuna moneta estratta.")
+
+if __name__ == "__main__":
+    main()
