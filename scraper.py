@@ -10,6 +10,7 @@ HEADERS = {
 }
 
 CURRENT_YEAR = datetime.now().year
+BASE_URL = "https://it.wikipedia.org"
 
 # Mappatura completa dei paesi (Italiano/Inglese/Nomi comuni -> ISO)
 COUNTRY_MAP = {
@@ -35,77 +36,99 @@ def detect_country(text):
         return None
     text_lower = text.lower()
     
-    # Cerca corrispondenze esatte delle parole chiave dei paesi
     for name, code in COUNTRY_MAP.items():
-        # Match di parola intera per evitare falsi positivi
         if re.search(r'\b' + re.escape(name) + r'\b', text_lower):
             return code
     return None
 
-def scrape_wikipedia_commemoratives():
-    url = "https://it.wikipedia.org/wiki/2_euro_commemorativi"
-    print(f"Scraping in corso da: {url}...")
+def get_yearly_page_urls():
+    """Recupera i link alle pagine dei singoli anni da Wikipedia."""
+    main_url = f"{BASE_URL}/wiki/2_euro_commemorativi"
+    print(f"Recupero l'indice degli anni da {main_url}...")
+    try:
+        res = requests.get(main_url, headers=HEADERS, timeout=15)
+        res.raise_for_status()
+        soup = BeautifulSoup(res.content, "html.parser")
+        
+        urls = []
+        for a in soup.select("a[href*='2_euro_commemorativi_del_']"):
+            href = a.get("href")
+            # Filtra solo link ad anni validi (es. 2004, 2024, ecc.)
+            if re.search(r'2_euro_commemorativi_del_\d{4}', href):
+                full_url = BASE_URL + href if href.startswith("/") else href
+                if full_url not in urls:
+                    urls.append(full_url)
+        return sorted(urls)
+    except Exception as e:
+        print(f"Errore nel recupero indice anni: {e}")
+        return []
+
+def scrape_year_page(url):
+    """Estrae le monete da una specifica sotto-pagina annuale."""
+    # Estrai l'anno dall'URL
+    year_match = re.search(r'\d{4}', url)
+    year = int(year_match.group(0)) if year_match else CURRENT_YEAR
+    
+    print(f"Scraping anno {year} da {url}...")
     
     try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, "html.parser")
+        res = requests.get(url, headers=HEADERS, timeout=15)
+        res.raise_for_status()
+        soup = BeautifulSoup(res.content, "html.parser")
         
-        coins = []
-        
-        # Cerchiamo sia i titoli delle sezioni (per capire il paese) che le tabelle
         content = soup.select_one("#mw-content-text .mw-parser-output")
         if not content:
-            print("Errore: Impossibile trovare il contenuto principale della pagina.")
             return []
 
-        current_country = "IT" # Default
-        
-        # Scorriamo gli elementi del DOM (Intestazioni h2/h3 e tabelle)
+        coins = []
+        current_country = None
+
+        # Cicliamo tra elementi per tracciare i titoli dei paesi e le relative tabelle
         for elem in content.find_all(["h2", "h3", "h4", "table"]):
-            # Se incontriamo un'intestazione, proviamo a ricavarne il paese
             if elem.name in ["h2", "h3", "h4"]:
                 header_text = elem.get_text()
                 detected = detect_country(header_text)
                 if detected:
                     current_country = detected
 
-            # Se incontriamo una tabella wikitable
             elif elem.name == "table" and "wikitable" in elem.get("class", []):
                 rows = elem.select("tr")
-                
                 for row in rows:
                     cols = row.select("td, th")
-                    if not cols or len(cols) < 2:
+                    if len(cols) < 2:
                         continue
                     
                     row_text = clean_text(row.get_text())
                     
-                    # 1. Trova l'Anno
-                    year_match = re.search(r'\b(200[4-9]|20[1-2][0-9])\b', row_text)
-                    if not year_match:
+                    # Salta le righe di intestazione della tabella
+                    if "Soggetto" in row_text or "Paese" in row_text or "Tiratura" in row_text:
                         continue
-                    year = int(year_match.group(1))
 
-                    # 2. Verifica/Raffina il Paese dalla riga (se presente esplicitamente)
+                    # Determina il paese
                     row_country = detect_country(row_text)
                     coin_country = row_country if row_country else current_country
+                    if not coin_country:
+                        coin_country = "EU" # Fallback estremo se proprio irriconoscibile
 
-                    # 3. Estrai Titolo / Motivo
+                    # Estrai il titolo/motivo della moneta
                     title = ""
                     for col in cols:
                         cell_text = clean_text(col.get_text())
-                        # Ignoriamo celle corte, solo numeri o date
+                        # Pulisci note tipo [1], [2]
+                        cell_text = re.sub(r'\[\d+\]', '', cell_text)
+                        
+                        # Cerchiamo una colonna con descrizione significativa
                         if len(cell_text) > 8 and not cell_text.isdigit() and "euro" not in cell_text.lower():
-                            # Rimuovi eventuali note tipo [1], [2]
-                            cell_text = re.sub(r'\[\d+\]', '', cell_text)
+                            # Evitiamo di prendere il nome del paese come titolo
+                            if detect_country(cell_text) and len(cell_text) < 25:
+                                continue
                             title = cell_text
                             break
-                    
+
                     if not title:
                         title = f"2€ Commemorativo {coin_country} {year}"
 
-                    # 4. Estrai Tiratura (Mintage)
+                    # Estrai la tiratura (mintage)
                     mintage = 0
                     numbers = re.findall(r'\b\d{1,3}(?:\.\d{3})+|\b\d{5,8}\b', row_text)
                     if numbers:
@@ -113,19 +136,17 @@ def scrape_wikipedia_commemoratives():
                         if clean_num:
                             mintage = int(clean_num)
 
-                    # 5. FLAG EMESSA VS ANNUNCIATA
-                    # Una moneta è considerata "annunciata" se l'anno è futuro o se è segnata come da emettere
+                    # Determina lo stato (issued vs announced)
                     is_future = year > CURRENT_YEAR
+                    is_announced_kw = any(kw in row_text.lower() for kw in ["annunciata", "in emissione", "da emettere", "tba", "da definire"])
                     has_mintage = mintage > 0
-                    is_announced_keyword = any(kw in row_text.lower() for kw in ["annunciata", "in emissione", "da emettere", "tba", "da definire"])
-                    
-                    status = "announced" if (is_future or is_announced_keyword or (year == CURRENT_YEAR and not has_mintage)) else "issued"
 
-                    # 6. ID Unico Deterministico
-                    slug = re.sub(r'[^a-zA-Z0-9]', '', title)[:10].upper()
+                    status = "announced" if (is_future or is_announced_kw or (year == CURRENT_YEAR and not has_mintage)) else "issued"
+
+                    # Generazione ID deterministico e pulito
+                    slug = re.sub(r'[^a-zA-Z0-9]', '', title)[:12].upper()
                     coin_id = f"EU-{coin_country}-{year}-2E-{slug}"
 
-                    # Aggiungi se non è un duplicato esatto
                     if not any(c["id"] == coin_id for c in coins):
                         coins.append({
                             "id": coin_id,
@@ -133,33 +154,47 @@ def scrape_wikipedia_commemoratives():
                             "year": year,
                             "denomination": "2.00",
                             "type": "commemorative",
-                            "status": status, # "issued" oppure "announced"
-                            "title": title[:120],
+                            "status": status,
+                            "title": title[:150],
                             "mint_mark": "",
                             "mintage": mintage,
                             "designer": "",
                             "image_url": "",
                             "variants": []
                         })
-
-        print(f"Estratte con successo {len(coins)} monete commmorative!")
         return coins
-
     except Exception as e:
-        print(f"Errore durante lo scraping: {e}")
+        print(f"Errore nello scraping dell'URL {url}: {e}")
         return []
 
 def main():
     os.makedirs("public", exist_ok=True)
-    coins = scrape_wikipedia_commemoratives()
+    yearly_urls = get_yearly_page_urls()
     
-    if coins:
+    if not yearly_urls:
+        print("Nessun URL annuale trovato! Verificare la struttura di Wikipedia.")
+        return
+
+    all_coins = []
+    for url in yearly_urls:
+        coins = scrape_year_page(url)
+        all_coins.extend(coins)
+
+    # Rimuovi eventuali duplicati di ID globali
+    unique_coins = []
+    seen_ids = set()
+    for coin in all_coins:
+        if coin["id"] not in seen_ids:
+            seen_ids.add(coin["id"])
+            unique_coins.append(coin)
+
+    if unique_coins:
         output_path = "public/catalog.json"
         with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(coins, f, ensure_ascii=False, indent=2)
-        print(f"SUCCESS: Catalogo salvato in '{output_path}' con {len(coins)} monete!")
+            json.dump(unique_coins, f, ensure_ascii=False, indent=2)
+        print(f"\nCOMPLETATO: Salvate ben {len(unique_coins)} monete in '{output_path}'!")
     else:
-        print("ATTENZIONE: Nessuna moneta estratta.")
+        print("Nessuna moneta estratta.")
 
 if __name__ == "__main__":
     main()
