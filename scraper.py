@@ -27,10 +27,14 @@ COUNTRY_MAP = {
 }
 
 def clean_text(text):
+    """Sostituisce gli a capo con spazi e pulisce il testo da note ed eccedenze."""
     if not text:
         return ""
-    # Rimuove note tipo [1], [2] e spazi multipli/non-breaking
+    # Sostituisce a capo e tabulazioni con spazi singoli
+    text = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    # Rimuove le note numeriche di Wikipedia [1], [2], ecc.
     text = re.sub(r'\[\d+\]', '', text)
+    # Rimuove spazi multipli e non-breaking space
     return " ".join(text.replace('\xa0', ' ').strip().split())
 
 def detect_country(text):
@@ -50,8 +54,27 @@ def parse_mintage(text):
     clean_num = re.sub(r'[^\d]', '', text)
     return int(clean_num) if clean_num else 0
 
+def extract_image_url(cell):
+    """Estrae l'URL dell'immagine della moneta dalla cella HTML."""
+    if not cell:
+        return ""
+    img_tag = cell.find("img")
+    if not img_tag:
+        return ""
+    
+    # Prende preferibilmente src o data-src
+    src = img_tag.get("src") or img_tag.get("data-src") or ""
+    
+    if src:
+        if src.startswith("//"):
+            src = "https:" + src
+        elif src.startswith("/"):
+            src = BASE_URL + src
+            
+    return src
+
 def get_yearly_page_urls():
-    """Genera gli URL per tutte le pagine annuali dal 2004 al futuro."""
+    """Genera gli URL per tutte le pagine annuali dal 2004 ad oggi."""
     urls = []
     main_url = f"{BASE_URL}/wiki/2_euro_commemorativi"
     
@@ -93,7 +116,6 @@ def scrape_year_page(url):
 
         coins = []
 
-        # Troviamo tutte le tabelle "wikitable"
         tables = content.select("table.wikitable")
         for table in tables:
             rows = table.select("tr")
@@ -102,13 +124,12 @@ def scrape_year_page(url):
                 row = rows[i]
                 cols = row.select("td")
                 
-                # Una riga principale valida ha almeno 5 celle (Immagine, Paese, Tema, Tiratura, Emissione, [Disegnatore])
                 if len(cols) >= 5:
-                    # Se la prima colonna ha l'immagine (o rowspan), analizziamo i campi per posizione
-                    first_col_text = clean_text(cols[0].get_text())
+                    # Determina se la prima cella contiene l'immagine della moneta
+                    has_img_col = bool(cols[0].find("img") or cols[0].has_attr("rowspan"))
+                    image_url = extract_image_url(cols[0]) if has_img_col else ""
                     
-                    # Se la prima cella è l'immagine, spostiamo gli indici di 1
-                    offset = 1 if (cols[0].find("img") or cols[0].has_attr("rowspan")) else 0
+                    offset = 1 if has_img_col else 0
                     
                     if len(cols) > offset + 3:
                         raw_country = clean_text(cols[offset].get_text())
@@ -119,24 +140,21 @@ def scrape_year_page(url):
 
                         country_code = detect_country(raw_country)
                         if not country_code:
-                            # Tentativo di recupero se il testo contiene altro
                             country_code = detect_country(row.get_text()) or "EU"
 
                         mintage = parse_mintage(raw_mintage)
                         
-                        # Cerca se la riga SUCCESSIVA contiene la descrizione
+                        # Recupera la descrizione dalla riga successiva
                         description = ""
                         if i + 1 < len(rows):
                             next_row = rows[i + 1]
                             next_cols = next_row.select("td")
-                            # La riga della descrizione di solito ha 1 sola colonna con colspan
                             if len(next_cols) == 1 and ("Descrizione:" in next_row.get_text() or next_cols[0].has_attr("colspan")):
                                 description = clean_text(next_row.get_text())
-                                # Rimuovi il prefisso "Descrizione:" se presente
                                 description = re.sub(r'^Descrizione:\s*', '', description, flags=re.IGNORECASE)
-                                i += 1 # Saltiamo la riga della descrizione al prossimo ciclo
+                                i += 1 # Salta la riga della descrizione nel ciclo principale
 
-                        # Calcolo dello stato
+                        # Determina lo stato della moneta
                         is_future = year > CURRENT_YEAR
                         is_announced_kw = any(kw in row.get_text().lower() for kw in ["annunciata", "in emissione", "da emettere", "tba", "da definire"])
                         has_mintage = mintage > 0
@@ -155,7 +173,7 @@ def scrape_year_page(url):
                             "issue_date": raw_issue_date,
                             "designer": raw_designer,
                             "description": description,
-                            "image_url": "",
+                            "image_url": image_url,
                             "variants": []
                         })
                 i += 1
@@ -176,7 +194,6 @@ def main():
         coins = scrape_year_page(url)
         raw_coins.extend(coins)
 
-    # Rimuovi duplicati e assegna ID progressivi (1, 2, 3...)
     final_coins = []
     seen = set()
     current_id = 1
@@ -193,7 +210,7 @@ def main():
         output_path = "public/catalog.json"
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(final_coins, f, ensure_ascii=False, indent=2)
-        print(f"\nCOMPLETATO: Salvate {len(final_coins)} monete con ID progressivo (1-{len(final_coins)}) in '{output_path}'!")
+        print(f"\nCOMPLETATO: Salvate {len(final_coins)} monete con immagini e titoli puliti in '{output_path}'!")
     else:
         print("ATTENZIONE: Nessuna moneta estratta.")
 
