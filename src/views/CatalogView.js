@@ -13,30 +13,64 @@ export default {
     const { ownedTotalsByCoinId } = useCollection();
 
     const selectedCoin = ref(null);
-    const searchFilter = ref('');
-    const countryFilter = ref('');
-    const yearFilter = ref('');
-    const statusFilter = ref('');
+    
+    // Stati reattivi perfettamente allineati ai v-model della FiltersBar
+    const searchQuery = ref('');
+    const collectionFilter = ref('all'); // 'all' | 'owned' | 'missing'
+    const selectedCountry = ref('');
+    const selectedYear = ref('');
+    const selectedStatus = ref('');
+
+    // Verifica se ci sono filtri attivi per mostrare il pulsante di reset
+    const hasActiveFilters = computed(() => {
+      return (
+        searchQuery.value.trim() !== '' ||
+        collectionFilter.value !== 'all' ||
+        selectedCountry.value !== '' ||
+        selectedYear.value !== '' ||
+        selectedStatus.value !== ''
+      );
+    });
+
+    const resetFilters = () => {
+      searchQuery.value = '';
+      collectionFilter.value = 'all';
+      selectedCountry.value = '';
+      selectedYear.value = '';
+      selectedStatus.value = '';
+    };
 
     const filteredCoins = computed(() => {
       return coins.value.filter(coin => {
-        if (searchFilter.value) {
-          const q = searchFilter.value.toLowerCase();
+        const ownedQty = ownedTotalsByCoinId.value[coin.id] || 0;
+
+        // 1. Filtro Possesso (Tutti / Posseduti / Mancanti)
+        if (collectionFilter.value === 'owned' && ownedQty === 0) return false;
+        if (collectionFilter.value === 'missing' && ownedQty > 0) return false;
+
+        // 2. Filtro Testuale (Titolo o Descrizione)
+        if (searchQuery.value && searchQuery.value.trim() !== '') {
+          const q = searchQuery.value.toLowerCase().trim();
           const matchTitle = (coin.title || '').toLowerCase().includes(q);
           const matchDesc = (coin.description || '').toLowerCase().includes(q);
           if (!matchTitle && !matchDesc) return false;
         }
 
-        if (countryFilter.value && String(coin.country).toUpperCase() !== String(countryFilter.value).toUpperCase()) {
-          return false;
+        // 3. Filtro Paese
+        if (selectedCountry.value && selectedCountry.value !== '') {
+          const coinCountry = String(coin.country || '').toUpperCase().trim();
+          const targetCountry = String(selectedCountry.value).toUpperCase().trim();
+          if (coinCountry !== targetCountry) return false;
         }
 
-        if (yearFilter.value && String(coin.year) !== String(yearFilter.value)) {
-          return false;
+        // 4. Filtro Anno
+        if (selectedYear.value && selectedYear.value !== '') {
+          if (String(coin.year) !== String(selectedYear.value)) return false;
         }
 
-        if (statusFilter.value && coin.status !== statusFilter.value) {
-          return false;
+        // 5. Filtro Stato Emissione (issued / announced)
+        if (selectedStatus.value && selectedStatus.value !== '') {
+          if (coin.status !== selectedStatus.value) return false;
         }
 
         return true;
@@ -55,28 +89,36 @@ export default {
       coins,
       loading,
       selectedCoin,
-      searchFilter,
-      countryFilter,
-      yearFilter,
-      statusFilter,
+      searchQuery,
+      collectionFilter,
+      selectedCountry,
+      selectedYear,
+      selectedStatus,
+      hasActiveFilters,
       filteredCoins,
       getCountryName,
       availableCountries,
       availableYears,
       ownedTotalsByCoinId,
       openModal,
-      closeModal
+      closeModal,
+      resetFilters
     };
   },
   template: `
     <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      
+      <!-- BARRA FILTRI INTEGRATA CON LA SUA FIRMA ESATTA -->
       <FiltersBar 
-        v-model:search="searchFilter"
-        v-model:country="countryFilter"
-        v-model:year="yearFilter"
-        v-model:status="statusFilter"
+        v-model:searchQuery="searchQuery"
+        v-model:collectionFilter="collectionFilter"
+        v-model:selectedCountry="selectedCountry"
+        v-model:selectedYear="selectedYear"
+        v-model:selectedStatus="selectedStatus"
         :countries="availableCountries"
         :years="availableYears"
+        :hasActiveFilters="hasActiveFilters"
+        @reset="resetFilters"
       />
 
       <div v-if="loading" class="text-center py-12 text-slate-400 flex flex-col items-center gap-3">
@@ -99,7 +141,6 @@ export default {
         />
       </div>
 
-      <!-- MODALE APERTA SE selectedCoin NON È NULL -->
       <CoinModal 
         v-if="selectedCoin" 
         :coin="selectedCoin" 
