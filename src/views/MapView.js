@@ -8,7 +8,7 @@ export default {
   name: 'MapView',
   setup() {
     const { coins, getCountryName } = useCatalog();
-    const { collection } = useCollection();
+    const { ownedTotalsByCoinId } = useCollection();
 
     const mapHolder = ref(null);
     const hoveredCountry = ref(null);
@@ -18,70 +18,31 @@ export default {
     let gSelection = null;
     let zoomBehavior = null;
 
-    // Mappatura universale per associare i codici e nomi ai codici ISO Numerici (Topography Atlas)
     const isoNumericMap = {
-      'AT': '040', 'AUT': '040',
-      'BE': '056', 'BEL': '056',
-      'CY': '196', 'CYP': '196',
-      'EE': '233', 'EST': '233',
-      'FI': '246', 'FIN': '246',
-      'FR': '250', 'FRA': '250',
-      'DE': '276', 'DEU': '276', 'GERMANIA': '276',
-      'GR': '300', 'GRC': '300',
-      'IE': '372', 'IRL': '372',
-      'IT': '380', 'ITA': '380',
-      'LV': '428', 'LVA': '428',
-      'LT': '440', 'LTU': '440',
-      'LU': '442', 'LUX': '442',
-      'MT': '470', 'MLT': '470',
-      'NL': '528', 'NLD': '528',
-      'PT': '620', 'PRT': '620',
-      'SK': '703', 'SVK': '703',
-      'SI': '705', 'SVN': '705',
-      'ES': '724', 'ESP': '724',
-      'HR': '191', 'HRV': '191',
-      'AD': '020', 'AND': '020',
-      'MC': '492', 'MCO': '492',
-      'SM': '674', 'SMR': '674',
-      'VA': '336', 'VAT': '336'
+      'AT': '040', 'BE': '056', 'CY': '196', 'EE': '233', 'FI': '246',
+      'FR': '250', 'DE': '276', 'GR': '300', 'IE': '372', 'IT': '380',
+      'LV': '428', 'LT': '440', 'LU': '442', 'MT': '470', 'NL': '528',
+      'PT': '620', 'SK': '703', 'SI': '705', 'ES': '724', 'HR': '191',
+      'AD': '020', 'MC': '492', 'SM': '674', 'VA': '336'
     };
 
-    // Helper per normalizzare qualsiasi codice Paese
-    const normalizeCountryCode = (rawCode) => {
-      if (!rawCode) return '';
-      const c = String(rawCode).toUpperCase().trim();
-      if (['IT', 'ITA', 'ITALIA'].includes(c)) return 'IT';
-      if (['DE', 'DEU', 'GERMANIA'].includes(c)) return 'DE';
-      if (['FR', 'FRA', 'FRANCIA'].includes(c)) return 'FR';
-      if (['ES', 'ESP', 'SPAGNA'].includes(c)) return 'ES';
-      if (['AT', 'AUT', 'AUSTRIA'].includes(c)) return 'AT';
-      if (['BE', 'BEL', 'BELGIO'].includes(c)) return 'BE';
-      if (['CY', 'CYP', 'CIPRO'].includes(c)) return 'CY';
-      if (['EE', 'EST', 'ESTONIA'].includes(c)) return 'EE';
-      if (['FI', 'FIN', 'FINLANDIA'].includes(c)) return 'FI';
-      if (['GR', 'GRC', 'GRECIA'].includes(c)) return 'GR';
-      if (['IE', 'IRL', 'IRLANDA'].includes(c)) return 'IE';
-      if (['LV', 'LVA', 'LETTONIA'].includes(c)) return 'LV';
-      if (['LT', 'LTU', 'LITUANIA'].includes(c)) return 'LT';
-      if (['LU', 'LUX', 'LUSSEMBURGO'].includes(c)) return 'LU';
-      if (['MT', 'MLT', 'MALTA'].includes(c)) return 'MT';
-      if (['NL', 'NLD', 'PAESI BASSI', 'OLANDA'].includes(c)) return 'NL';
-      if (['PT', 'PRT', 'PORTOGALLO'].includes(c)) return 'PT';
-      if (['SK', 'SVK', 'SLOVACCHIA'].includes(c)) return 'SK';
-      if (['SI', 'SVN', 'SLOVENIA'].includes(c)) return 'SI';
-      if (['HR', 'HRV', 'CROAZIA'].includes(c)) return 'HR';
-      if (['AD', 'AND', 'ANDORRA'].includes(c)) return 'AD';
-      if (['MC', 'MCO', 'MONACO'].includes(c)) return 'MC';
-      if (['SM', 'SMR', 'SAN MARINO'].includes(c)) return 'SM';
-      if (['VA', 'VAT', 'VATICANO'].includes(c)) return 'VA';
-      return c;
+    const normalizeCountryCode = (code) => {
+      if (!code) return '';
+      const c = String(code).toUpperCase().trim();
+      const map = {
+        'ITA': 'IT', 'GERMANIA': 'DE', 'DEU': 'DE', 'FRA': 'FR', 'ESP': 'ES',
+        'AUT': 'AT', 'BEL': 'BE', 'CYP': 'CY', 'EST': 'EE', 'FIN': 'FI',
+        'GRC': 'GR', 'IRL': 'IE', 'LVA': 'LV', 'LTU': 'LT', 'LUX': 'LU',
+        'MLT': 'MT', 'NLD': 'NL', 'PRT': 'PT', 'SVK': 'SK', 'SVN': 'SI',
+        'HRV': 'HR', 'AND': 'AD', 'MCO': 'MC', 'SMR': 'SM', 'VAT': 'VA'
+      };
+      return map[c] || c;
     };
 
-    // Mappa reattiva con calcolo in tempo reale dei pezzi posseduti
+    // Calcolo delle statistiche per Paese
     const countryStats = computed(() => {
       const statsMap = {};
 
-      // 1. Inizializza i totali per moneta
       coins.value.forEach(coin => {
         const rawCode = coin.country;
         if (!rawCode || rawCode === 'EU') return;
@@ -95,26 +56,12 @@ export default {
             owned: 0 
           };
         }
+
         statsMap[normCode].total += 1;
 
-        // 2. Calcola se la moneta è posseduta analizzando la struttura della collezione
-        const coinInventory = collection.value[coin.id];
-        let isOwned = false;
-
-        if (coinInventory) {
-          // Se ha la struttura a zecche/condizioni, somma le quantità
-          Object.values(coinInventory).forEach(mintData => {
-            if (typeof mintData === 'object' && mintData !== null) {
-              Object.values(mintData).forEach(qty => {
-                if (Number(qty) > 0) isOwned = true;
-              });
-            } else if (Number(mintData) > 0) {
-              isOwned = true;
-            }
-          });
-        }
-
-        if (isOwned) {
+        // Se possediamo almeno un pezzo di questa moneta
+        const ownedQty = ownedTotalsByCoinId.value[coin.id] || 0;
+        if (ownedQty > 0) {
           statsMap[normCode].owned += 1;
         }
       });
@@ -127,7 +74,6 @@ export default {
         .sort((a, b) => b.percentage - a.percentage || a.name.localeCompare(b.name, 'it'));
     });
 
-    // Mappatura ISO Numerico -> Dati per D3
     const statsByNumericIso = computed(() => {
       const map = {};
       countryStats.value.forEach(s => {
@@ -218,7 +164,7 @@ export default {
           });
 
       } catch (err) {
-        console.error("Errore durante il caricamento o rendering della mappa:", err);
+        console.error("Errore caricamento mappa:", err);
       } finally {
         mapLoading.value = false;
       }
@@ -230,8 +176,7 @@ export default {
       }
     };
 
-    // Reattività spinta: ri-colora la mappa appena la collezione o i dati del catalogo cambiano
-    watch([coins, collection], () => {
+    watch([coins, ownedTotalsByCoinId], () => {
       updateMapColors();
     }, { deep: true });
 
@@ -263,7 +208,6 @@ export default {
       <!-- MAP CONTAINER -->
       <div class="flex-1 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-4 flex flex-col justify-between relative shadow-xl min-h-[550px] overflow-hidden">
         
-        <!-- CONTROLLO RESET ZOOM -->
         <div class="absolute top-6 right-6 z-10 flex flex-col gap-2">
           <button 
             @click="resetZoom" 
@@ -276,7 +220,6 @@ export default {
           </button>
         </div>
 
-        <!-- TOOLTIP DINAMICO -->
         <div 
           v-show="hoveredCountry" 
           class="absolute top-6 left-6 z-10 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-xl shadow-2xl pointer-events-none space-y-1 min-w-[180px]"
@@ -288,15 +231,12 @@ export default {
           </div>
         </div>
 
-        <!-- OVERLAY CARICAMENTO -->
         <div v-if="mapLoading" class="absolute inset-0 z-20 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center text-slate-400 text-xs gap-2">
           <div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div> Caricamento mappa...
         </div>
 
-        <!-- SVG HOLDER CON v-once -->
         <div v-once ref="mapHolder" class="w-full h-full flex-1 flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing min-h-[450px]"></div>
 
-        <!-- LEGENDA -->
         <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400 pt-3 border-t border-slate-700/40 z-10 bg-slate-800/30 -mx-4 -mb-4 px-4 pb-3">
           <span class="text-[11px] text-slate-500 flex items-center gap-1">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -347,4 +287,3 @@ export default {
     </div>
   `
 };
-// prova

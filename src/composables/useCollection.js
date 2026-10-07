@@ -1,135 +1,98 @@
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
-const CURRENT_SCHEMA_VERSION = 1;
+const STORAGE_KEY = 'euro_coin_collection_v2';
 const collection = ref({});
 
+// Caricamento iniziale da LocalStorage
+try {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    collection.value = JSON.parse(saved);
+  }
+} catch (e) {
+  console.error("Errore nel caricamento della collezione:", e);
+}
+
+// Salvataggio automatico
+watch(collection, (newVal) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newVal));
+  } catch (e) {
+    console.error("Errore nel salvataggio della collezione:", e);
+  }
+}, { deep: true });
+
 export function useCollection() {
-  const loadCollection = () => {
-    try {
-      const saved = localStorage.getItem('euro_coins_collection');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          collection.value = parsed.collection || parsed;
-        }
-      }
-    } catch (e) {
-      console.error("Errore durante il caricamento della collezione:", e);
-    }
+  const getQuantity = (coinId, mintCode = 'STD', typeId = 'unc') => {
+    return collection.value?.[coinId]?.[mintCode]?.[typeId] || 0;
   };
 
-  const saveCollection = () => {
-    localStorage.setItem('euro_coins_collection', JSON.stringify(collection.value));
-  };
-
-  const getQuantity = (coinId, mintCode, typeId) => {
-    return collection.value[coinId]?.[mintCode]?.[typeId] || 0;
-  };
-
-  const getMintTotal = (coinId, mintCode) => {
-    const mintData = collection.value[coinId]?.[mintCode];
+  const getMintTotal = (coinId, mintCode = 'STD') => {
+    const mintData = collection.value?.[coinId]?.[mintCode];
     if (!mintData) return 0;
-    return (mintData.used || 0) + (mintData.unc || 0) + (mintData.proof || 0) + (mintData.coincard || 0);
+    return Object.values(mintData).reduce((a, b) => a + Number(b || 0), 0);
   };
-
-  const getCoinTotalCount = (coinId) => {
-    const coinData = collection.value[coinId];
-    if (!coinData) return 0;
-    let total = 0;
-    for (const mintKey in coinData) {
-      for (const typeKey in coinData[mintKey]) {
-        total += coinData[mintKey][typeKey] || 0;
-      }
-    }
-    return total;
-  };
-
-  // Mappa indicizzata O(1) per evitare il ricalcolo ricorsivo nei filtri
-  const ownedTotalsByCoinId = computed(() => {
-    const map = {};
-    for (const coinId in collection.value) {
-      map[coinId] = getCoinTotalCount(coinId);
-    }
-    return map;
-  });
 
   const updateCount = (coinId, mintCode, typeId, delta) => {
     if (!collection.value[coinId]) {
       collection.value[coinId] = {};
     }
     if (!collection.value[coinId][mintCode]) {
-      collection.value[coinId][mintCode] = { used: 0, unc: 0, proof: 0, coincard: 0 };
+      collection.value[coinId][mintCode] = {};
     }
     
     const current = collection.value[coinId][mintCode][typeId] || 0;
-    const updated = Math.max(0, current + delta);
-    collection.value[coinId][mintCode][typeId] = updated;
-
-    saveCollection();
+    const nextVal = Math.max(0, current + delta);
+    
+    collection.value[coinId][mintCode][typeId] = nextVal;
+    // Forziamo il trigger della reattività Vue
+    collection.value = { ...collection.value };
   };
 
-  const totalOwnedPieces = computed(() => {
-    let grandTotal = 0;
-    for (const coinId in collection.value) {
-      grandTotal += getCoinTotalCount(coinId);
-    }
-    return grandTotal;
+  const ownedTotalsByCoinId = computed(() => {
+    const totals = {};
+    Object.keys(collection.value).forEach(coinId => {
+      let sum = 0;
+      const coinData = collection.value[coinId];
+      if (coinData && typeof coinData === 'object') {
+        Object.values(coinData).forEach(mintObj => {
+          if (mintObj && typeof mintObj === 'object') {
+            Object.values(mintObj).forEach(q => sum += Number(q || 0));
+          }
+        });
+      }
+      totals[coinId] = sum;
+    });
+    return totals;
   });
 
-  const validateCollectionSchema = (data) => {
-    if (typeof data !== 'object' || data === null) {
-      return { valid: false, reason: "Il file non contiene un oggetto JSON valido." };
-    }
-    const rawCollection = data.collection || data;
-    if (typeof rawCollection !== 'object' || rawCollection === null) {
-      return { valid: false, reason: "Il campo 'collection' dev'essere un oggetto." };
-    }
-    for (const [coinId, mints] of Object.entries(rawCollection)) {
-      if (typeof mints !== 'object' || mints === null) return { valid: false, reason: `Struttura non valida per ${coinId}` };
-      for (const [mintCode, conditions] of Object.entries(mints)) {
-        if (typeof conditions !== 'object' || conditions === null) return { valid: false, reason: `Zecca ${mintCode} non valida per ${coinId}` };
-        for (const [condKey, count] of Object.entries(conditions)) {
-          if (typeof count !== 'number' || count < 0) return { valid: false, reason: `Quantità non valida per ${condKey} in ${coinId}` };
-        }
-      }
-    }
-    return { valid: true, collectionData: rawCollection };
-  };
+  const totalOwnedPieces = computed(() => {
+    return Object.values(ownedTotalsByCoinId.value).reduce((a, b) => a + b, 0);
+  });
 
   const exportCollection = () => {
-    const exportPayload = {
-      schemaVersion: CURRENT_SCHEMA_VERSION,
-      exportedAt: new Date().toISOString(),
-      collection: collection.value
-    };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `collezione_2euro_v${CURRENT_SCHEMA_VERSION}_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(collection.value, null, 2));
+    const dlAnchorElem = document.createElement('a');
+    dlAnchorElem.setAttribute("href", dataStr);
+    dlAnchorElem.setAttribute("download", `collezione_2euro_${new Date().toISOString().slice(0,10)}.json`);
+    dlAnchorElem.click();
   };
 
-  const importCollectionData = (importedData) => {
-    const validation = validateCollectionSchema(importedData);
-    if (validation.valid) {
-      collection.value = validation.collectionData;
-      saveCollection();
+  const importCollectionData = (data) => {
+    if (typeof data === 'object' && data !== null) {
+      collection.value = data;
       return { success: true };
     }
-    return { success: false, reason: validation.reason };
+    return { success: false, reason: "Formato dati non valido" };
   };
 
   return {
     collection,
-    loadCollection,
+    ownedTotalsByCoinId,
+    totalOwnedPieces,
     getQuantity,
     getMintTotal,
-    getCoinTotalCount,
-    ownedTotalsByCoinId,
     updateCount,
-    totalOwnedPieces,
     exportCollection,
     importCollectionData
   };
