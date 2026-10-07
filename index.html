@@ -4,12 +4,40 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>2€ Commemorativi - Collezione</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Font Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- IMPORT MAP: Risolve i bare module specifier nativamente nel browser -->
+  <script type="importmap">
+  {
+    "imports": {
+      "vue": "https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.esm-browser.prod.js",
+      "vue-router": "https://cdn.jsdelivr.net/npm/vue-router@4.3.0/dist/vue-router.esm-browser.js",
+      "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm",
+      "topojson-client": "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/+esm"
+    }
+  }
+  </script>
+
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    [v-cloak] { display: none; }
+    .coin-img-blend {
+      mix-blend-mode: multiply;
+      filter: contrast(1.05) brightness(1.02);
+    }
+  </style>
 </head>
 <body class="h-full">
-  <div id="app"></div>
-  <script type="module" src="src/main.js"></script>
+  <div id="app" v-cloak></div>
+
+  <!-- Entry point ESM nativo -->
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
