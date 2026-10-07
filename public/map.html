@@ -17,8 +17,11 @@
     body { font-family: 'Inter', sans-serif; }
     [v-cloak] { display: none; }
     .country-shape {
-      transition: all 0.2s ease;
-      cursor: pointer;
+      transition: fill 0.2s ease, filter 0.2s ease;
+      cursor: grab;
+    }
+    .country-shape:active {
+      cursor: grabbing;
     }
     .country-shape:hover {
       filter: brightness(1.3);
@@ -56,10 +59,21 @@
     <!-- MAIN CONTENT -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
       
-      <!-- MAP CONTAINER -->
-      <div class="flex-1 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-4 flex flex-col justify-between relative shadow-xl min-h-[500px]">
+      <!-- MAP CONTAINER (Occupazione full-height/width del riquadro) -->
+      <div class="flex-1 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-4 flex flex-col justify-between relative shadow-xl min-h-[550px] overflow-hidden">
         
-        <!-- TOOLTIP DINAMICO (Usa v-show invece di v-if per evitare errori DOM) -->
+        <!-- CONTROLLI ZOOM / INFORMAZIONI GESTI -->
+        <div class="absolute top-6 right-6 z-10 flex flex-col gap-2">
+          <button 
+            @click="resetZoom" 
+            title="Ripristina posizione e zoom" 
+            class="p-2.5 bg-slate-900/80 hover:bg-slate-900 backdrop-blur border border-slate-700 text-slate-200 rounded-xl shadow-lg transition-colors flex items-center justify-center"
+          >
+            <i data-lucide="maximize-2" class="w-4 h-4 text-indigo-400"></i>
+          </button>
+        </div>
+
+        <!-- TOOLTIP DINAMICO -->
         <div 
           v-show="hoveredCountry" 
           class="absolute top-6 left-6 z-10 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-xl shadow-2xl pointer-events-none space-y-1 min-w-[180px]"
@@ -71,18 +85,23 @@
           </div>
         </div>
 
-        <!-- SVG MAP -->
-        <div id="map-holder" class="w-full h-full flex items-center justify-center min-h-[400px]">
+        <!-- SVG MAP HOLDER FULL SIZE -->
+        <div id="map-holder" class="w-full h-full flex-1 flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing">
           <div v-if="mapLoading" class="text-slate-400 text-xs flex items-center gap-2">
             <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-indigo-400"></i> Caricamento mappa...
           </div>
         </div>
 
-        <!-- LEGENDA COLORI -->
-        <div class="flex items-center justify-center gap-2 text-xs text-slate-400 pt-4 border-t border-slate-700/40">
-          <span>0%</span>
-          <div class="h-3 w-40 rounded-full bg-gradient-to-r from-slate-700 via-indigo-600 to-emerald-500"></div>
-          <span>100%</span>
+        <!-- LEGENDA COLORI E ISTRUZIONI -->
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400 pt-3 border-t border-slate-700/40 z-10 bg-slate-800/30 -mx-4 -mb-4 px-4 pb-3">
+          <span class="text-[11px] text-slate-500 flex items-center gap-1">
+            <i data-lucide="move" class="w-3.5 h-3.5"></i> Trascina per spostare, rotella per zoomare
+          </span>
+          <div class="flex items-center gap-2">
+            <span>0%</span>
+            <div class="h-3 w-36 rounded-full bg-gradient-to-r from-slate-700 via-indigo-600 to-emerald-500"></div>
+            <span>100%</span>
+          </div>
         </div>
       </div>
 
@@ -148,6 +167,10 @@
         const hoveredCountry = ref(null);
         const mapLoading = ref(true);
 
+        let svgSelection = null;
+        let gSelection = null;
+        let zoomBehavior = null;
+
         const loadData = async () => {
           try {
             const saved = localStorage.getItem('euro_coins_collection');
@@ -197,4 +220,53 @@
           return Object.values(map)
             .map(stat => ({
               ...stat,
-              percentage: stat.total > 0 ? Math.round((stat
+              percentage: stat.total > 0 ? Math.round((stat.owned / stat.total) * 100) : 0
+            }))
+            .sort((a, b) => b.percentage - a.percentage || a.name.localeCompare(b.name, 'it'));
+        });
+
+        const overallPercentage = computed(() => {
+          let totalIssued = coins.value.length;
+          if (totalIssued === 0) return 0;
+          let ownedDistinct = coins.value.filter(c => getCoinTotalCount(c.id) > 0).length;
+          return Math.round((ownedDistinct / totalIssued) * 100);
+        });
+
+        const renderMap = async () => {
+          try {
+            const container = document.getElementById("map-holder");
+            const width = container.clientWidth || 800;
+            const height = container.clientHeight || 550;
+
+            svgSelection = d3.select("#map-holder")
+              .html("")
+              .append("svg")
+              .attr("width", "100%")
+              .attr("height", "100%")
+              .attr("viewBox", `0 0 ${width} ${height}`)
+              .attr("preserveAspectRatio", "xMidYMid meet");
+
+            // Gruppo principale che conterrà la mappa e subirà la trasformazione di pan e zoom
+            gSelection = svgSelection.append("g");
+
+            // Configurazione Pan e Zoom
+            zoomBehavior = d3.zoom()
+              .scaleExtent([1, 10]) // Limiti di ingrandimento (da 1x a 10x)
+              .translateExtent([[0, 0], [width, height]])
+              .on("zoom", (event) => {
+                gSelection.attr("transform", event.transform);
+              });
+
+            svgSelection.call(zoomBehavior);
+
+            // Proiezione centrata sull'Europa
+            const projection = d3.geoMercator()
+              .center([14, 52])
+              .scale(width * 1.1)
+              .translate([width / 2, height / 2]);
+
+            const path = d3.geoPath().projection(projection);
+
+            // Carichiamo la mappa TopoJSON
+            const topoData = await d3.json("https://unpkg.com/world-atlas@2.0.2/countries-50m.json");
+            const countries = topo
