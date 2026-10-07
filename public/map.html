@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="it" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mappa Completamento - 2€ Commemorativi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- D3.js e TopoJSON per la mappa geografica -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/topojson-client@3"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    [v-cloak] { display: none; }
+    .country-shape {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .country-shape:hover {
+      filter: brightness(1.25);
+      stroke: #6366f1;
+      stroke-width: 1.5px;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <div id="app" v-cloak class="min-h-screen flex flex-col">
+    
+    <!-- HEADER -->
+    <header class="bg-slate-800/80 backdrop-blur border-b border-slate-700/60 sticky top-0 z-30">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <a href="index.html" class="p-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl border border-slate-600 transition-colors">
+            <i data-lucide="arrow-left" class="w-5 h-5"></i>
+          </a>
+          <div>
+            <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              <i data-lucide="map" class="w-5 h-5 text-indigo-400"></i> Mappa Completamento
+            </h1>
+            <p class="text-xs text-slate-400">Percentuale di monete possedute (almeno 1 pezzo) per ciascun Paese</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/60 border border-slate-700/50 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2">
+          <span class="text-slate-400">Completamento Totale:</span>
+          <span class="text-emerald-400 font-bold text-sm">{{ overallPercentage }}%</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
+      
+      <!-- MAP CONTAINER -->
+      <div class="flex-1 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-4 flex flex-col justify-between relative shadow-xl min-h-[500px]">
+        
+        <!-- TOOLTIP DINAMICO -->
+        <div 
+          v-if="hoveredCountry" 
+          class="absolute top-6 left-6 z-10 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-xl shadow-2xl pointer-events-none space-y-1 min-w-[180px]"
+        >
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">{{ hoveredCountry.name }}</div>
+          <div class="text-lg font-extrabold text-indigo-400">{{ hoveredCountry.percentage }}%</div>
+          <div class="text-xs text-slate-300">
+            <span class="font-semibold text-emerald-400">{{ hoveredCountry.owned }}</span> / {{ hoveredCountry.total }} monete possedute
+          </div>
+        </div>
+
+        <!-- SVG MAP -->
+        <div id="map-holder" class="w-full h-full flex items-center justify-center"></div>
+
+        <!-- LEGENDA COLORI -->
+        <div class="flex items-center justify-center gap-2 text-xs text-slate-400 pt-4 border-t border-slate-700/40">
+          <span>0%</span>
+          <div class="h-3 w-40 rounded-full bg-gradient-to-r from-slate-700 via-indigo-600 to-emerald-500"></div>
+          <span>100%</span>
+        </div>
+      </div>
+
+      <!-- TABELLA RIEPILOGATIVA PAESI -->
+      <div class="w-full lg:w-80 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-4 flex flex-col max-h-[600px] shadow-xl">
+        <h2 class="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
+          <i data-lucide="list" class="w-4 h-4 text-indigo-400"></i> Dettaglio per Paese
+        </h2>
+
+        <div class="overflow-y-auto pr-1 flex-1 space-y-2">
+          <div 
+            v-for="stat in countryStats" 
+            :key="stat.code"
+            @mouseenter="highlightCountry(stat.code)"
+            @mouseleave="unhighlightCountry"
+            class="bg-slate-900/60 border border-slate-700/40 hover:border-indigo-500/50 p-2.5 rounded-xl transition-all flex items-center justify-between text-xs"
+          >
+            <div>
+              <div class="font-bold text-slate-200">{{ stat.name }}</div>
+              <div class="text-[11px] text-slate-400">{{ stat.owned }} / {{ stat.total }} monete</div>
+            </div>
+            
+            <div class="text-right">
+              <span class="font-mono font-bold text-sm" :class="stat.percentage === 100 ? 'text-emerald-400' : 'text-indigo-300'">
+                {{ stat.percentage }}%
+              </span>
+              <div class="w-16 bg-slate-700 h-1.5 rounded-full overflow-hidden mt-1">
+                <div class="bg-indigo-500 h-full rounded-full" :style="{ width: stat.percentage + '%' }"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    const countryNamesMap = {
+      'IT': 'Italia', 'DE': 'Germania', 'FR': 'Francia', 'ES': 'Spagna',
+      'AT': 'Austria', 'BE': 'Belgio', 'CY': 'Cipro', 'EE': 'Estonia',
+      'FI': 'Finlandia', 'GR': 'Grecia', 'IE': 'Irlanda', 'LV': 'Lettonia',
+      'LT': 'Lituania', 'LU': 'Lussemburgo', 'MT': 'Malta', 'MC': 'Monaco',
+      'NL': 'Paesi Bassi', 'PT': 'Portogallo', 'SM': 'San Marino', 'SK': 'Slovacchia',
+      'SI': 'Slovenia', 'VA': 'Vaticano', 'HR': 'Croazia', 'AD': 'Andorra'
+    };
+
+    // Mappatura codici ISO alpha-2 verso codici ISO numerici/alpha-3 usati dalle mappe TopoJSON
+    const isoMap = {
+      'AT': 'AUT', 'BE': 'BEL', 'CY': 'CYP', 'EE': 'EST', 'FI': 'FIN',
+      'FR': 'FRA', 'DE': 'DEU', 'GR': 'GRC', 'IE': 'IRL', 'IT': 'ITA',
+      'LV': 'LVA', 'LT': 'LTU', 'LU': 'LUX', 'MT': 'MLT', 'NL': 'NLD',
+      'PT': 'PRT', 'SK': 'SVK', 'SI': 'SVN', 'ES': 'ESP', 'HR': 'HRV',
+      'AD': 'AND', 'MC': 'MCO', 'SM': 'SMR', 'VA': 'VAT'
+    };
+
+    createApp({
+      setup() {
+        const coins = ref([]);
+        const collection = ref({});
+        const hoveredCountry = ref(null);
+
+        const loadData = async () => {
+          try {
+            const saved = localStorage.getItem('euro_coins_collection');
+            if (saved) collection.value = JSON.parse(saved);
+
+            const res = await fetch(`catalog.json?t=${Date.now()}`);
+            coins.value = await res.json();
+          } catch (e) {
+            console.error("Errore nel caricamento dati:", e);
+          }
+        };
+
+        const getCoinTotalCount = (coinId) => {
+          const coinData = collection.value[coinId];
+          if (!coinData) return 0;
+          let total = 0;
+          for (const mintKey in coinData) {
+            for (const typeKey in coinData[mintKey]) {
+              total += coinData[mintKey][typeKey] || 0;
+            }
+          }
+          return total;
+        };
+
+        const countryStats = computed(() => {
+          const map = {};
+          
+          coins.value.forEach(coin => {
+            const code = coin.country;
+            if (!code || code === 'EU') return;
+
+            if (!map[code]) {
+              map[code] = {
+                code,
+                name: countryNamesMap[code] || code,
+                total: 0,
+                owned: 0
+              };
+            }
+
+            map[code].total += 1;
+            if (getCoinTotalCount(coin.id) > 0) {
+              map[code].owned += 1;
+            }
+          });
+
+          return Object.values(map)
+            .map(stat => ({
+              ...stat,
+              percentage: stat.total > 0 ? Math.round((stat.owned / stat.total) * 100) : 0
+            }))
+            .sort((a, b) => b.percentage - a.percentage || a.name.localeCompare(b.name, 'it'));
+        });
+
+        const overallPercentage = computed(() => {
+          let totalIssued = coins.value.length;
+          if (totalIssued === 0) return 0;
+          let ownedDistinct = coins.value.filter(c => getCoinTotalCount(c.id) > 0).length;
+          return Math.round((ownedDistinct / totalIssued) * 100);
+        });
+
+        const renderMap = async () => {
+          const width = 700;
+          const height = 500;
+
+          const svg = d3.select("#map-holder")
+            .append("svg")
+            .attr("viewBox", `0 0 ${width} ${height}`)
+            .attr("class", "w-full h-auto max-h-[500px]");
+
+          // Proiezione centrata sull'Europa
+          const projection = d3.geoMercator()
+            .center([13, 52])
+            .scale(620)
+            .translate([width / 2, height / 2]);
+
+          const path = d3.geoPath().projection(projection);
+
+          // Carica la mappa TopoJSON dell'Europa
+          const topoData = await d3.json("https://raw.githubusercontent.com/leakyMirror/map-of-europe/main/TopoJSON/europe.json");
+          const countries = topojson.feature(topoData, topoData.objects.europe).features;
+
+          // Scala di colore dal grigio/scuro al verde smeraldo
+          const colorScale = d3.scaleSequential()
+            .domain([0, 100])
+            .interpolator(d3.interpolateRgb("#334155", "#10b981"));
+
+          const statsByIso3 = {};
+          countryStats.value.forEach(s => {
+            const iso3 = isoMap[s.code];
+            if (iso3) statsByIso3[iso3] = s;
+          });
+
+          svg.selectAll("path")
+            .data(countries)
+            .enter()
+            .append("path")
+            .attr("d", path)
+            .attr("class", "country-shape")
+            .attr("fill", d => {
+              const iso3 = d.properties.ISO2 || d.properties.ISO3 || d.id;
+              const stat = statsByIso3[iso3];
+              return stat ? colorScale(stat.percentage) : "#1e293b";
+            })
+            .attr("stroke", "#475569")
+            .attr("stroke-width", "0.5px")
+            .on("mouseover", (event, d) => {
+              const iso3 = d.properties.ISO2 || d.properties.ISO3 || d.id;
+              const stat = statsByIso3[iso3];
+              if (stat) {
+                hoveredCountry.value = stat;
+              }
+            })
+            .on("mouseleave", () => {
+              hoveredCountry.value = null;
+            });
+        };
+
+        const highlightCountry = (code) => {
+          const stat = countryStats.value.find(s => s.code === code);
+          if (stat) hoveredCountry.value = stat;
+        };
+
+        const unhighlightCountry = () => {
+          hoveredCountry.value = null;
+        };
+
+        onMounted(async () => {
+          await loadData();
+          await renderMap();
+          if (window.lucide) lucide.createIcons();
+        });
+
+        return {
+          countryStats,
+          overallPercentage,
+          hoveredCountry,
+          highlightCountry,
+          unhighlightCountry
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
