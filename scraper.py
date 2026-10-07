@@ -16,9 +16,10 @@ HEADERS = {
 CURRENT_YEAR = datetime.now().year
 BASE_URL = "https://it.wikipedia.org"
 
+# Percorsi aggiornati per Opzione A (Root diretta del progetto, senza sottocartella public)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PUBLIC_DIR = os.path.join(BASE_DIR, "public")
-IMAGES_DIR = os.path.join(PUBLIC_DIR, "images")
+IMAGES_DIR = os.path.join(BASE_DIR, "images")
+CATALOG_PATH = os.path.join(BASE_DIR, "catalog.json")
 
 COUNTRY_MAP = {
     "andorra": "AD", "austria": "AT", "belgio": "BE", "belgium": "BE",
@@ -122,17 +123,17 @@ def download_and_save_image(remote_url: str, coin_id: str, max_retries: int = 3)
             if res.status_code == 200:
                 with open(local_path, "wb") as f:
                     f.write(res.content)
-                print(f"  [+] Scaricata immagine per {coin_id} -> {filename}")
+                print(f"   [+] Scaricata immagine per {coin_id} -> {filename}")
                 return relative_url
             elif res.status_code in [403, 429]:
-                print(f"  [!] HTTP {res.status_code} per {coin_id}. Retry tra {backoff}s...")
+                print(f"   [!] HTTP {res.status_code} per {coin_id}. Retry tra {backoff}s...")
                 time.sleep(backoff)
                 backoff *= 2
             else:
-                print(f"  [!] HTTP {res.status_code} per {clean_url}")
+                print(f"   [!] HTTP {res.status_code} per {clean_url}")
                 break
         except Exception as e:
-            print(f"  [!] Errore per {coin_id}: {e}")
+            print(f"   [!] Errore per {coin_id}: {e}")
             time.sleep(backoff)
             backoff *= 2
 
@@ -324,7 +325,6 @@ def scrape_year_page(url):
         return []
 
 def main():
-    os.makedirs(PUBLIC_DIR, exist_ok=True)
     os.makedirs(IMAGES_DIR, exist_ok=True)
 
     yearly_urls = get_yearly_page_urls()
@@ -344,10 +344,9 @@ def main():
             final_coins.append(coin)
 
     if final_coins:
-        output_path = os.path.join(PUBLIC_DIR, "catalog.json")
-        with open(output_path, "w", encoding="utf-8") as f:
+        with open(CATALOG_PATH, "w", encoding="utf-8") as f:
             json.dump(final_coins, f, ensure_ascii=False, indent=2)
-        print(f"\nCOMPLETATO: Salvate {len(final_coins)} monete in '{output_path}'")
+        print(f"\nCOMPLETATO: Salvate {len(final_coins)} monete in '{CATALOG_PATH}'")
         print(f"Cartella immagini: '{IMAGES_DIR}'")
     else:
         print("ATTENZIONE: Nessuna moneta estratta.")
