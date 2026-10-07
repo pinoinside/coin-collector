@@ -37,7 +37,7 @@ export default {
   },
   template: `
     <teleport to="body">
-      <div class="fixed inset-x-0 inset-y-0 h-screen w-screen z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md" @click.self="$emit('close')">
+      <div class="fixed -top-12 -left-12 w-[calc(100vw+6rem)] h-[calc(100vh+6rem)] z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto m-0 p-0" @click.self="$emit('close')">
         <div class="bg-slate-800 border border-slate-700/80 rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl relative max-h-[90vh] flex flex-col justify-between overflow-hidden">
           
           <!-- HEADER MODALE -->
