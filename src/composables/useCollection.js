@@ -3,22 +3,22 @@ import { ref, computed, watch } from 'vue';
 const STORAGE_KEY = 'euro_coin_collection_v2';
 const collection = ref({});
 
-// Caricamento iniziale da LocalStorage
+// Carica da LocalStorage
 try {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     collection.value = JSON.parse(saved);
   }
 } catch (e) {
-  console.error("Errore nel caricamento della collezione:", e);
+  console.error("Errore caricamento LocalStorage:", e);
 }
 
-// Salvataggio automatico
+// Salva ogni modifica
 watch(collection, (newVal) => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newVal));
   } catch (e) {
-    console.error("Errore nel salvataggio della collezione:", e);
+    console.error("Errore salvataggio LocalStorage:", e);
   }
 }, { deep: true });
 
@@ -34,26 +34,32 @@ export function useCollection() {
   };
 
   const updateCount = (coinId, mintCode, typeId, delta) => {
-    if (!collection.value[coinId]) {
-      collection.value[coinId] = {};
-    }
-    if (!collection.value[coinId][mintCode]) {
-      collection.value[coinId][mintCode] = {};
-    }
+    // Cloniamo lo stato per rompere il riferimento e forzare la reattività di Vue
+    const nextCollection = { ...collection.value };
     
-    const current = collection.value[coinId][mintCode][typeId] || 0;
+    if (!nextCollection[coinId]) {
+      nextCollection[coinId] = {};
+    }
+    if (!nextCollection[coinId][mintCode]) {
+      nextCollection[coinId][mintCode] = {};
+    }
+
+    const current = nextCollection[coinId][mintCode][typeId] || 0;
     const nextVal = Math.max(0, current + delta);
+
+    nextCollection[coinId][mintCode][typeId] = nextVal;
     
-    collection.value[coinId][mintCode][typeId] = nextVal;
-    // Forziamo il trigger della reattività Vue
-    collection.value = { ...collection.value };
+    // Riassegniamo il ref così Vue spara gli aggiornamenti a tutti i componenti
+    collection.value = nextCollection;
   };
 
   const ownedTotalsByCoinId = computed(() => {
     const totals = {};
-    Object.keys(collection.value).forEach(coinId => {
+    const col = collection.value || {};
+    
+    Object.keys(col).forEach(coinId => {
       let sum = 0;
-      const coinData = collection.value[coinId];
+      const coinData = col[coinId];
       if (coinData && typeof coinData === 'object') {
         Object.values(coinData).forEach(mintObj => {
           if (mintObj && typeof mintObj === 'object') {
@@ -63,6 +69,7 @@ export function useCollection() {
       }
       totals[coinId] = sum;
     });
+    
     return totals;
   });
 
@@ -70,30 +77,12 @@ export function useCollection() {
     return Object.values(ownedTotalsByCoinId.value).reduce((a, b) => a + b, 0);
   });
 
-  const exportCollection = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(collection.value, null, 2));
-    const dlAnchorElem = document.createElement('a');
-    dlAnchorElem.setAttribute("href", dataStr);
-    dlAnchorElem.setAttribute("download", `collezione_2euro_${new Date().toISOString().slice(0,10)}.json`);
-    dlAnchorElem.click();
-  };
-
-  const importCollectionData = (data) => {
-    if (typeof data === 'object' && data !== null) {
-      collection.value = data;
-      return { success: true };
-    }
-    return { success: false, reason: "Formato dati non valido" };
-  };
-
   return {
     collection,
     ownedTotalsByCoinId,
     totalOwnedPieces,
     getQuantity,
     getMintTotal,
-    updateCount,
-    exportCollection,
-    importCollectionData
+    updateCount
   };
 }
