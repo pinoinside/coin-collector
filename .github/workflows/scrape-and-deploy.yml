@@ -30,20 +30,33 @@ jobs:
         run: |
           python scraper.py
 
-      - name: Commit e Push del catalog.json aggiornato
+      - name: Commit e Push del catalogo ed immagini
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Verifica se il file esiste prima di fare git add
+          # Verifica se il file catalogo esiste
           if [ -f "public/catalog.json" ]; then
             git add public/catalog.json
             
+            # Aggiunge anche la cartella immagini se esiste
+            if [ -d "public/images" ]; then
+              git add public/images/
+            fi
+            
             if ! git diff --staged --quiet; then
-              git commit -m "chore: aggiornamento automatico catalogo monete"
+              # Calcola quante immagini nuove o modificate sono state aggiunte
+              NEW_IMAGES=$(git diff --staged --name-only | grep "^public/images/" | wc -l)
+              
+              echo "Trovate modifiche da committare!"
+              echo " - Catalogo aggiornato"
+              echo " - Immagini nuove/aggiornate: $NEW_IMAGES"
+              
+              git commit -m "chore: aggiornamento automatico catalogo e immagini monete ($NEW_IMAGES nuove immagini)"
               git push
+              echo "Push completato con successo!"
             else
-              echo "Nessuna modifica rilevata nel catalogo."
+              echo "Nessuna modifica rilevata nel catalogo o nelle immagini."
             fi
           else
             echo "ERRORE: Il file public/catalog.json non esiste!"
