@@ -4,12 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Collezione 2€ Commemorativi</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- Vue.js 3 (Versione bloccata) -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.prod.js"></script>
+  <!-- Font Inter & Lucide Icons (Versione bloccata) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js"></script>
   <style>
     body { font-family: 'Inter', sans-serif; }
     [v-cloak] { display: none; }
@@ -39,8 +42,17 @@
         <!-- CONTROLLI COLLEZIONE & KPI BADGES -->
         <div class="flex flex-wrap items-center gap-3 text-xs font-medium">
           
+          <!-- LINK MAPPA -->
+          <a 
+            href="map.html" 
+            title="Visualizza mappa completamento Europa"
+            class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 rounded-lg flex items-center gap-1.5 transition-colors text-xs font-semibold"
+          >
+            <i data-lucide="map" class="w-3.5 h-3.5 text-indigo-400"></i> Mappa
+          </a>
+
           <!-- PULSANTI IMPORT/EXPORT -->
-          <div class="flex items-center space-x-2 mr-2">
+          <div class="flex items-center space-x-2">
             <button 
               @click="exportCollection" 
               title="Esporta la tua collezione in JSON"
@@ -55,11 +67,7 @@
             >
               <i data-lucide="upload" class="w-3.5 h-3.5 text-emerald-400"></i> Importa
             </button>
-            <!-- Input file nascosto per l'importazione -->
             <input type="file" ref="fileInput" @change="importCollection" accept=".json" class="hidden" />
-            <a href="map.html" title="Visualizza mappa" class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 rounded-lg flex items-center gap-1.5 transition-colors text-xs font-semibold">
-              <i data-lucide="map" class="w-3.5 h-3.5 text-indigo-400"></i> Mappa
-            </a>
           </div>
 
           <!-- BADGES TOTALE -->
@@ -214,7 +222,6 @@
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
 
-        <!-- TESTATA MODALE -->
         <div class="flex items-center space-x-3 mb-2">
           <span class="font-bold px-2.5 py-1 rounded bg-slate-700 text-slate-200 border border-slate-600 text-xs">
             {{ getCountryName(selectedCoin.country) }}
@@ -226,7 +233,7 @@
 
         <div class="overflow-y-auto pr-1 space-y-6">
           
-          <!-- SEZIONE GESTIONE INVENTARIO / COLLEZIONE -->
+          <!-- SEZIONE GESTIONE INVENTARIO -->
           <div class="bg-slate-900/60 border border-slate-700/60 rounded-xl p-4">
             <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-400 mb-3 flex items-center gap-2">
               <i data-lucide="box" class="w-4 h-4"></i> Pezzi Posseduti in Collezione
@@ -297,6 +304,8 @@
   <script>
     const { createApp, ref, computed, onMounted, onUpdated } = Vue;
 
+    const CURRENT_SCHEMA_VERSION = 1;
+
     const countryNamesMap = {
       'IT': 'Italia', 'ITA': 'Italia', 'DE': 'Germania', 'DEU': 'Germania',
       'FR': 'Francia', 'FRA': 'Francia', 'ES': 'Spagna', 'ESP': 'Spagna',
@@ -320,7 +329,6 @@
       { code: 'J', city: 'Amburgo' }
     ];
 
-    // Tipi di stato/condizione estesi con "Usata"
     const conditionTypes = [
       { id: 'used', label: 'Usata / Circolata' },
       { id: 'unc', label: 'UNC / Fior di Conio' },
@@ -342,11 +350,16 @@
         
         const collection = ref({});
 
+        // Carica e migra la collezione dal localStorage
         const loadCollection = () => {
           try {
             const saved = localStorage.getItem('euro_coins_collection');
             if (saved) {
-              collection.value = JSON.parse(saved);
+              const parsed = JSON.parse(saved);
+              // Gestisce eventuale compatibilità retroattiva se prima era un oggetto grezzo
+              if (parsed && typeof parsed === 'object') {
+                collection.value = parsed.collection || parsed;
+              }
             }
           } catch (e) {
             console.error("Errore nel caricamento della collezione:", e);
@@ -357,24 +370,58 @@
           localStorage.setItem('euro_coins_collection', JSON.stringify(collection.value));
         };
 
-        // ESPORTAZIONE JSON COLLEZIONE
+        // Valida la struttura dati prima di importare un file JSON
+        const validateCollectionSchema = (data) => {
+          if (typeof data !== 'object' || data === null) {
+            return { valid: false, reason: "Il file non contiene un oggetto JSON valido." };
+          }
+
+          // Se contiene lo schema wrappato
+          const rawCollection = data.collection || data;
+          if (typeof rawCollection !== 'object' || rawCollection === null) {
+            return { valid: false, reason: "Il campo 'collection' deve essere un oggetto." };
+          }
+
+          for (const [coinId, mints] of Object.entries(rawCollection)) {
+            if (typeof mints !== 'object' || mints === null) {
+              return { valid: false, reason: `Struttura non valida per la moneta ID ${coinId}.` };
+            }
+            for (const [mintCode, conditions] of Object.entries(mints)) {
+              if (typeof conditions !== 'object' || conditions === null) {
+                return { valid: false, reason: `Zecca ${mintCode} non valida per moneta ID ${coinId}.` };
+              }
+              for (const [condKey, count] of Object.entries(conditions)) {
+                if (typeof count !== 'number' || count < 0) {
+                  return { valid: false, reason: `Quantità non valida per ${condKey} in ${coinId}.` };
+                }
+              }
+            }
+          }
+
+          return { valid: true, collectionData: rawCollection };
+        };
+
+        // ESPORTAZIONE JSON CON SCHEMA VERSIONATO
         const exportCollection = () => {
-          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(collection.value, null, 2));
+          const exportPayload = {
+            schemaVersion: CURRENT_SCHEMA_VERSION,
+            exportedAt: new Date().toISOString(),
+            collection: collection.value
+          };
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
           const downloadAnchor = document.createElement('a');
           downloadAnchor.setAttribute("href", dataStr);
-          downloadAnchor.setAttribute("download", `collezione_2euro_${new Date().toISOString().slice(0, 10)}.json`);
+          downloadAnchor.setAttribute("download", `collezione_2euro_v${CURRENT_SCHEMA_VERSION}_${new Date().toISOString().slice(0, 10)}.json`);
           document.body.appendChild(downloadAnchor);
           downloadAnchor.click();
           downloadAnchor.remove();
         };
 
-        // IMPORTAZIONE JSON COLLEZIONE
         const triggerImport = () => {
-          if (fileInput.value) {
-            fileInput.value.click();
-          }
+          if (fileInput.value) fileInput.value.click();
         };
 
+        // IMPORTAZIONE SICURA CON VALIDAZIONE SCHEMA
         const importCollection = (event) => {
           const file = event.target.files[0];
           if (!file) return;
@@ -383,21 +430,22 @@
           reader.onload = (e) => {
             try {
               const importedData = JSON.parse(e.target.result);
-              if (typeof importedData === 'object' && importedData !== null) {
-                if (confirm("Attenzione: caricando questo file sovrascriverai i dati della collezione attuale. Continuare?")) {
-                  collection.value = importedData;
+              const validation = validateCollectionSchema(importedData);
+
+              if (validation.valid) {
+                if (confirm("Attenzione: caricando questo file sovrascriverai la collezione attuale. Continuare?")) {
+                  collection.value = validation.collectionData;
                   saveCollection();
-                  alert("Collezione importata con successo!");
+                  alert("Collezione importata e verificata con successo!");
                 }
               } else {
-                alert("Il file caricato non contiene un formato collezione valido.");
+                alert(`Impossibile importare: ${validation.reason}`);
               }
             } catch (err) {
-              alert("Errore nella lettura del file JSON: " + err.message);
+              alert("Errore nella lettura o sintassi del file JSON: " + err.message);
             }
           };
           reader.readAsText(file);
-          // Resetta il valore dell'input file per permettere caricamenti consecutivi dello stesso file
           event.target.value = '';
         };
 
