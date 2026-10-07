@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import CatalogView from '@/views/CatalogView.vue';
-import MapView from '@/views/MapView.vue';
+import CatalogView from '../views/CatalogView.js';
+import MapView from '../views/MapView.js';
 
 const routes = [
   { path: '/', name: 'Catalog', component: CatalogView },
@@ -8,6 +8,6 @@ const routes = [
 ];
 
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory('/coin-collector/'), // Imposta la base url per GitHub Pages
   routes
 });
