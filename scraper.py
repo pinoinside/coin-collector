@@ -2,9 +2,9 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 from datetime import datetime
 import requests
-import unicodedata
 from bs4 import BeautifulSoup
 
 HEADERS = {
@@ -13,8 +13,8 @@ HEADERS = {
 
 CURRENT_YEAR = datetime.now().year
 BASE_URL = "https://it.wikipedia.org"
+IMAGES_DIR = "public/images"
 
-# Mappatura dei paesi (Italiano / Nomi comuni -> ISO 3166-1 alpha-2)
 COUNTRY_MAP = {
     "andorra": "AD", "austria": "AT", "belgio": "BE", "belgium": "BE",
     "cipro": "CY", "cyprus": "CY", "croazia": "HR", "croatia": "HR",
@@ -58,8 +58,24 @@ def parse_mintage(text):
     clean_num = re.sub(r'[^\d]', '', text)
     return int(clean_num) if clean_num else 0
 
+def normalize_title_for_id(title: str) -> str:
+    """Normalizza aggressivamente il titolo rimuovendo accenti, punteggiatura e spazi extra."""
+    if not title:
+        return ""
+    text = title.lower().strip()
+    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
+    text = re.sub(r'[^a-z0-9]', '', text)
+    return text
+
+def generate_coin_id(country: str, year: int, title: str) -> str:
+    """Genera un ID deterministico SHA-256 ultra-stabile."""
+    clean_country = country.strip().upper()
+    clean_title = normalize_title_for_id(title)
+    raw_key = f"{clean_country}_{year}_{clean_title}"
+    return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()[:12]
+
 def extract_image_url(cell):
-    """Estrae l'URL dell'immagine della moneta dalla cella HTML."""
+    """Estrae l'URL sorgente dell'immagine della moneta dalla cella HTML."""
     if not cell:
         return ""
     img_tag = cell.find("img")
@@ -67,7 +83,6 @@ def extract_image_url(cell):
         return ""
     
     src = img_tag.get("src") or img_tag.get("data-src") or ""
-    
     if src:
         if src.startswith("//"):
             src = "https:" + src
@@ -76,28 +91,46 @@ def extract_image_url(cell):
             
     return src
 
-import hashlib
-import re
-import unicodedata
-
-def normalize_title_for_id(title: str) -> str:
-    """Normalizza aggressivamente il titolo rimuovendo accenti, punteggiatura e spazi extra."""
-    if not title:
+def download_and_save_image(remote_url: str, coin_id: str) -> str:
+    """
+    Scarica l'immagine dall'URL remoto e la salva localmente in public/images/coin_id.<ext>.
+    Restituisce il percorso relativo locale (es. 'images/abc123456789.png').
+    """
+    if not remote_url:
         return ""
-    # Converti in minuscolo
-    text = title.lower().strip()
-    # Rimuovi accenti / caratteri diatesici
-    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
-    # Mantieni solo lettere e cifre
-    text = re.sub(r'[^a-z0-9]', '', text)
-    return text
+    
+    os.makedirs(IMAGES_DIR, exist_ok=True)
 
-def generate_coin_id(country: str, year: int, title: str) -> str:
-    """Genera un ID deterministico SHA-256 ultra-stabile basato su paese, anno e titolo normalizzato."""
-    clean_country = country.strip().upper()
-    clean_title = normalize_title_for_id(title)
-    raw_key = f"{clean_country}_{year}_{clean_title}"
-    return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()[:12]
+    # Determina l'estensione del file dall'URL (default .jpg)
+    ext = ".jpg"
+    clean_url = remote_url.split('?')[0].lower()
+    if clean_url.endswith('.png'):
+        ext = ".png"
+    elif clean_url.endswith('.webp'):
+        ext = ".webp"
+    elif clean_url.endswith('.svg'):
+        ext = ".svg"
+
+    filename = f"{coin_id}{ext}"
+    local_path = os.path.join(IMAGES_DIR, filename)
+    relative_url = f"images/{filename}"
+
+    # Se l'immagine esiste già localmente, evita il re-download
+    if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+        return relative_url
+
+    try:
+        res = requests.get(remote_url, headers=HEADERS, timeout=10)
+        if res.status_code == 200:
+            with open(local_path, "wb") as f:
+                f.write(res.content)
+            return relative_url
+        else:
+            print(f"  [!] Errore HTTP {res.status_code} scaricando immagine per {coin_id}")
+    except Exception as e:
+        print(f"  [!] Eccezione scaricando immagine per {coin_id}: {e}")
+
+    return ""
 
 def get_yearly_page_urls():
     """Genera gli URL per tutte le pagine annuali dal 2004 al futuro."""
@@ -151,20 +184,17 @@ def scrape_year_page(url):
                 
                 if len(cols) >= 4:
                     has_img_col = bool(cols[0].find("img") or cols[0].has_attr("rowspan"))
-                    common_img_url = extract_image_url(cols[0]) if has_img_col else ""
+                    remote_common_img_url = extract_image_url(cols[0]) if has_img_col else ""
                     offset = 1 if has_img_col else 0
 
                     raw_country_text = clean_element_text(cols[offset])
                     
-                    # VERIFICA EMISSIONE CONGIUNTA / UNIONE EUROPEA
+                    # EMISSIONE CONGIUNTA / UNIONE EUROPEA
                     if "unione europea" in raw_country_text.lower() or "ue" == raw_country_text.lower():
                         common_theme = clean_element_text(cols[offset + 1])
-                        
-                        # Estrai Data emissione e Disegnatore se presenti nelle colonne con rowspan
                         common_issue_date = clean_element_text(cols[offset + 3]) if len(cols) > offset + 3 else ""
                         common_designer = clean_element_text(cols[offset + 4]) if len(cols) > offset + 4 else ""
 
-                        # La riga successiva di solito contiene la Descrizione comune
                         common_description = ""
                         if i + 1 < len(rows):
                             next_row = rows[i + 1]
@@ -172,21 +202,18 @@ def scrape_year_page(url):
                             if len(next_cols) >= 1 and "Descrizione:" in next_row.get_text():
                                 common_description = clean_element_text(next_cols[0])
                                 common_description = re.sub(r'^Descrizione:\s*', '', common_description, flags=re.IGNORECASE)
-                                i += 1 # Salta la riga della descrizione
+                                i += 1
 
-                        # Ora scorriamo le sottorighe dei singoli paesi partecipanti
                         i += 1
                         while i < len(rows):
                             sub_row = rows[i]
                             sub_cols = sub_row.select("td")
                             
-                            # Se incontriamo una nuova moneta standard o una tabella nuova, interrompiamo
                             if not sub_cols or len(sub_cols) < 3 or "Descrizione:" in sub_row.get_text():
                                 break
 
-                            # Le sottorighe dei paesi nell'emissione comune hanno: [Immagine Paese, Paese, Iscrizioni locali, Tiratura]
                             sub_img_col = sub_cols[0] if sub_cols[0].find("img") else None
-                            country_img_url = extract_image_url(sub_img_col) if sub_img_col else common_img_url
+                            remote_country_img_url = extract_image_url(sub_img_col) if sub_img_col else remote_common_img_url
 
                             sub_country_idx = 1 if sub_img_col else 0
                             if len(sub_cols) <= sub_country_idx:
@@ -196,11 +223,9 @@ def scrape_year_page(url):
                             country_name_text = clean_element_text(sub_cols[sub_country_idx])
                             sub_country_code = detect_country(country_name_text)
 
-                            # Se non riusciamo a rilevare un paese valido, siamo usciti dal blocco congiunto
                             if not sub_country_code:
                                 break
 
-                            # Dettagli specifici del paese
                             local_inscriptions = clean_element_text(sub_cols[sub_country_idx + 1]) if len(sub_cols) > sub_country_idx + 1 else ""
                             raw_mintage = clean_element_text(sub_cols[sub_country_idx + 2]) if len(sub_cols) > sub_country_idx + 2 else ""
                             mintage = parse_mintage(raw_mintage)
@@ -215,6 +240,12 @@ def scrape_year_page(url):
 
                             coin_id = generate_coin_id(sub_country_code, year, title)
 
+                            # Scarica e salva l'immagine in locale
+                            local_image_path = download_and_save_image(
+                                remote_country_img_url or remote_common_img_url, 
+                                coin_id
+                            )
+
                             coins.append({
                                 "id": coin_id,
                                 "country": sub_country_code,
@@ -228,12 +259,12 @@ def scrape_year_page(url):
                                 "issue_date": common_issue_date,
                                 "designer": common_designer,
                                 "description": common_description,
-                                "image_url": country_img_url or common_img_url,
+                                "image_url": local_image_path,
                                 "variants": []
                             })
 
                             i += 1
-                        continue # Continua il ciclo principale per le prossime tabelle/monete
+                        continue
 
                     # EMISSIONE SINGOLA STANDARD
                     else:
@@ -266,6 +297,9 @@ def scrape_year_page(url):
 
                             coin_id = generate_coin_id(country_code, year, raw_theme)
 
+                            # Scarica e salva l'immagine in locale
+                            local_image_path = download_and_save_image(remote_common_img_url, coin_id)
+
                             coins.append({
                                 "id": coin_id,
                                 "country": country_code,
@@ -279,7 +313,7 @@ def scrape_year_page(url):
                                 "issue_date": raw_issue_date,
                                 "designer": raw_designer,
                                 "description": description,
-                                "image_url": common_img_url,
+                                "image_url": local_image_path,
                                 "variants": []
                             })
                 i += 1
@@ -292,6 +326,8 @@ def scrape_year_page(url):
 
 def main():
     os.makedirs("public", exist_ok=True)
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+
     yearly_urls = get_yearly_page_urls()
     print(f"Analisi di {len(yearly_urls)} pagine annuali...")
 
@@ -312,7 +348,7 @@ def main():
         output_path = "public/catalog.json"
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(final_coins, f, ensure_ascii=False, indent=2)
-        print(f"\nCOMPLETATO: Salvate {len(final_coins)} monete con ID deterministici e gestione delle emissioni congiunte in '{output_path}'!")
+        print(f"\nCOMPLETATO: Salvate {len(final_coins)} monete con immagini locali in '{IMAGES_DIR}/' e catalogo aggiornato in '{output_path}'!")
     else:
         print("ATTENZIONE: Nessuna moneta estratta.")
 
