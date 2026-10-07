@@ -4,11 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Collezione 2€ Commemorativi</title>
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Vue.js 3 -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-  <!-- Font Inter & Lucide Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -16,7 +13,6 @@
   <style>
     body { font-family: 'Inter', sans-serif; }
     [v-cloak] { display: none; }
-    /* Maschera lo sfondo bianco delle immagini per fonderlo col fondo scuro */
     .coin-img-blend {
       mix-blend-mode: multiply;
       filter: contrast(1.05) brightness(1.02);
@@ -36,14 +32,41 @@
           </div>
           <div>
             <h1 class="text-xl font-bold tracking-tight text-white">2€ Commemorativi</h1>
-            <p class="text-xs text-slate-400">Catalogo interattivo delle monete commemorative dell'Eurozona</p>
+            <p class="text-xs text-slate-400">Gestione collezione e catalogo dell'Eurozona</p>
           </div>
         </div>
 
-        <!-- KPI BADGES -->
-        <div class="flex items-center space-x-3 text-xs font-medium">
+        <!-- CONTROLLI COLLEZIONE & KPI BADGES -->
+        <div class="flex flex-wrap items-center gap-3 text-xs font-medium">
+          
+          <!-- PULSANTI IMPORT/EXPORT -->
+          <div class="flex items-center space-x-2 mr-2">
+            <button 
+              @click="exportCollection" 
+              title="Esporta la tua collezione in JSON"
+              class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded-lg flex items-center gap-1.5 transition-colors"
+            >
+              <i data-lucide="download" class="w-3.5 h-3.5 text-indigo-400"></i> Esporta
+            </button>
+            <button 
+              @click="triggerImport" 
+              title="Importa la collezione da un file JSON"
+              class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded-lg flex items-center gap-1.5 transition-colors"
+            >
+              <i data-lucide="upload" class="w-3.5 h-3.5 text-emerald-400"></i> Importa
+            </button>
+            <!-- Input file nascosto per l'importazione -->
+            <input type="file" ref="fileInput" @change="importCollection" accept=".json" class="hidden" />
+          </div>
+
+          <!-- BADGES TOTALE -->
           <div class="bg-slate-900/60 border border-slate-700/50 px-3 py-1.5 rounded-lg flex items-center gap-2">
-            <span class="text-slate-400">Totale:</span>
+            <span class="text-slate-400">Possedute:</span>
+            <span class="text-emerald-400 font-bold text-sm">{{ totalOwnedPieces }}</span>
+            <span class="text-slate-500">pezzi</span>
+          </div>
+          <div class="bg-slate-900/60 border border-slate-700/50 px-3 py-1.5 rounded-lg flex items-center gap-2">
+            <span class="text-slate-400">Visualizzate:</span>
             <span class="text-indigo-400 font-bold text-sm">{{ filteredCoins.length }}</span>
             <span class="text-slate-500">/ {{ coins.length }}</span>
           </div>
@@ -54,7 +77,7 @@
     <!-- BARRA FILTRI & RICERCA -->
     <section class="bg-slate-800/40 border-b border-slate-800 py-4">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-3">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           
           <!-- RICERCA TESTUALE -->
           <div class="relative lg:col-span-2">
@@ -62,9 +85,18 @@
             <input 
               v-model="searchQuery" 
               type="text" 
-              placeholder="Cerca per titolo, tema o descrizione..." 
-              class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+              placeholder="Cerca per titolo o descrizione..." 
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
             />
+          </div>
+
+          <!-- FILTRO POSSESSO -->
+          <div>
+            <select v-model="collectionFilter" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors">
+              <option value="all">Tutti i pezzi</option>
+              <option value="owned">Solo in Collezione</option>
+              <option value="missing">Mancanti</option>
+            </select>
           </div>
 
           <!-- FILTRO PAESE -->
@@ -83,7 +115,7 @@
             </select>
           </div>
 
-          <!-- FILTRO STATO -->
+          <!-- FILTRO STATO EMISSIONE -->
           <div>
             <select v-model="selectedStatus" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors">
               <option value="">Tutte</option>
@@ -103,45 +135,44 @@
       </div>
     </section>
 
-    <!-- GRID MONETE -->
+    <!-- MAIN CARDS -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
       
-      <!-- LOADING STATE -->
       <div v-if="loading" class="flex flex-col items-center justify-center py-20 text-slate-500">
         <i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-3 text-indigo-500"></i>
-        <p class="text-sm">Caricamento del catalogo in corso...</p>
+        <p class="text-sm">Caricamento del catalogo...</p>
       </div>
 
-      <!-- EMPTY STATE -->
       <div v-else-if="filteredCoins.length === 0" class="text-center py-20 bg-slate-800/20 border border-dashed border-slate-800 rounded-2xl">
         <i data-lucide="coins" class="w-12 h-12 mx-auto text-slate-600 mb-3"></i>
         <h3 class="text-base font-semibold text-slate-300">Nessuna moneta trovata</h3>
-        <p class="text-xs text-slate-500 mt-1">Prova a cambiare i filtri o la chiave di ricerca.</p>
+        <p class="text-xs text-slate-500 mt-1">Nessun elemento corrisponde ai criteri selezionati.</p>
       </div>
 
-      <!-- CARDS GRID -->
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
         <div 
           v-for="coin in filteredCoins" 
           :key="coin.id" 
           @click="openModal(coin)"
-          class="group bg-slate-800/50 hover:bg-slate-800 border border-slate-700/60 hover:border-indigo-500/50 rounded-xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between shadow-lg hover:shadow-indigo-500/5"
+          class="group bg-slate-800/50 hover:bg-slate-800 border border-slate-700/60 hover:border-indigo-500/50 rounded-xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between shadow-lg relative overflow-hidden"
         >
+          <!-- BADGE COLLEZIONE SE POSSEDUTA -->
+          <div v-if="getCoinTotalCount(coin.id) > 0" class="absolute top-0 right-0 bg-emerald-500 text-slate-950 text-[10px] font-extrabold px-2 py-0.5 rounded-bl-lg flex items-center gap-1 shadow">
+            <i data-lucide="check" class="w-3 h-3 stroke-[3]"></i> {{ getCoinTotalCount(coin.id) }}
+          </div>
+
           <div>
             <!-- BANNER STATO E PAESE -->
-            <div class="flex items-center justify-between mb-3 text-xs">
+            <div class="flex items-center justify-between mb-3 text-xs pr-6">
               <span class="font-bold px-2 py-0.5 rounded bg-slate-700 text-slate-200 border border-slate-600">
                 {{ getCountryName(coin.country) }}
               </span>
-              <span 
-                :class="coin.status === 'issued' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'"
-                class="px-2 py-0.5 rounded-full text-[10px] font-semibold border"
-              >
-                {{ coin.status === 'issued' ? 'Emessa' : 'Annunciata' }}
+              <span v-if="isGermany(coin.country)" class="text-[10px] font-semibold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20">
+                5 Zecche
               </span>
             </div>
 
-            <!-- IMMAGINE MONETA CON CONTENITORE CHIARO PER BLEND -->
+            <!-- IMMAGINE -->
             <div class="w-32 h-32 mx-auto my-3 relative flex items-center justify-center bg-slate-200/90 rounded-full p-1 border border-slate-600/30 shadow-inner">
               <img 
                 v-if="coin.image_url" 
@@ -164,58 +195,96 @@
           <!-- FOOTER CARD -->
           <div class="pt-3 border-t border-slate-700/40 mt-3 flex items-center justify-between text-xs text-slate-400">
             <span class="font-mono font-medium">{{ coin.year }}</span>
-            <span v-if="coin.mintage > 0" class="text-[11px] text-slate-500">
-              {{ formatNumber(coin.mintage) }} pz
+            <span class="text-[11px] text-indigo-400 group-hover:underline flex items-center gap-1">
+              <i data-lucide="edit-3" class="w-3 h-3"></i> Gestisci
             </span>
           </div>
         </div>
       </div>
     </main>
 
-    <!-- MODALE DETTAGLIO -->
+    <!-- MODALE GESTIONE COLLEZIONE & DETTAGLI -->
     <div v-if="selectedCoin" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" @click.self="closeModal">
-      <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative flex flex-col max-h-[90vh] overflow-hidden">
         
         <button @click="closeModal" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-700 transition-colors">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
 
-        <div class="flex items-center space-x-3 mb-4">
+        <!-- TESTATA MODALE -->
+        <div class="flex items-center space-x-3 mb-2">
           <span class="font-bold px-2.5 py-1 rounded bg-slate-700 text-slate-200 border border-slate-600 text-xs">
             {{ getCountryName(selectedCoin.country) }}
           </span>
           <span class="text-sm font-semibold text-indigo-400 font-mono">{{ selectedCoin.year }}</span>
         </div>
 
-        <div class="flex flex-col sm:flex-row gap-6 items-center mb-6">
-          <div class="w-36 h-36 flex-shrink-0 flex items-center justify-center bg-slate-200/90 rounded-full p-2 border border-slate-600/30 shadow-inner">
-            <img v-if="selectedCoin.image_url" :src="selectedCoin.image_url" :alt="selectedCoin.title" class="max-h-full max-w-full object-contain coin-img-blend" />
-            <i v-else data-lucide="disc" class="w-12 h-12 text-slate-600"></i>
-          </div>
+        <h3 class="text-lg font-bold text-white mb-4 pr-6">{{ selectedCoin.title }}</h3>
 
-          <div class="flex-1 space-y-2 text-sm">
-            <h3 class="text-lg font-bold text-white leading-snug">{{ selectedCoin.title }}</h3>
-            <div class="grid grid-cols-2 gap-2 text-xs pt-2">
-              <div class="bg-slate-900/40 p-2 rounded border border-slate-700/40">
-                <span class="block text-slate-500 mb-0.5">Tiratura</span>
-                <span class="font-semibold text-slate-200">{{ selectedCoin.mintage > 0 ? formatNumber(selectedCoin.mintage) + ' pz' : 'N/D' }}</span>
+        <div class="overflow-y-auto pr-1 space-y-6">
+          
+          <!-- SEZIONE GESTIONE INVENTARIO / COLLEZIONE -->
+          <div class="bg-slate-900/60 border border-slate-700/60 rounded-xl p-4">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-400 mb-3 flex items-center gap-2">
+              <i data-lucide="box" class="w-4 h-4"></i> Pezzi Posseduti in Collezione
+            </h4>
+
+            <!-- GERMANIA: 5 ZECCE -->
+            <div v-if="isGermany(selectedCoin.country)" class="space-y-4">
+              <div v-for="mint in germanMints" :key="mint.code" class="bg-slate-800/80 p-3 rounded-lg border border-slate-700/50">
+                <div class="text-xs font-bold text-amber-400 mb-2 flex items-center justify-between">
+                  <span>Zecca {{ mint.code }} - {{ mint.city }}</span>
+                  <span class="text-slate-400 text-[11px]">Totale: {{ getMintTotal(selectedCoin.id, mint.code) }}</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div v-for="type in conditionTypes" :key="type.id" class="flex items-center justify-between bg-slate-900/80 px-2.5 py-1.5 rounded border border-slate-700/40 text-xs">
+                    <span class="text-slate-300 font-medium">{{ type.label }}</span>
+                    <div class="flex items-center space-x-1.5">
+                      <button @click="updateCount(selectedCoin.id, mint.code, type.id, -1)" class="w-5 h-5 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-bold">-</button>
+                      <span class="w-5 text-center font-mono font-bold text-indigo-300">{{ getQuantity(selectedCoin.id, mint.code, type.id) }}</span>
+                      <button @click="updateCount(selectedCoin.id, mint.code, type.id, 1)" class="w-5 h-5 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-bold">+</button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="bg-slate-900/40 p-2 rounded border border-slate-700/40">
-                <span class="block text-slate-500 mb-0.5">Emissione</span>
-                <span class="font-semibold text-slate-200">{{ selectedCoin.issue_date || 'N/D' }}</span>
+            </div>
+
+            <!-- ALTRI PAESI: ZECCA UNICA (STD) -->
+            <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div v-for="type in conditionTypes" :key="type.id" class="flex items-center justify-between bg-slate-800/80 px-3 py-2 rounded-lg border border-slate-700/50 text-xs">
+                <span class="text-slate-300 font-medium">{{ type.label }}</span>
+                <div class="flex items-center space-x-2">
+                  <button @click="updateCount(selectedCoin.id, 'STD', type.id, -1)" class="w-6 h-6 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-white rounded font-bold">-</button>
+                  <span class="w-6 text-center font-mono font-bold text-indigo-300 text-sm">{{ getQuantity(selectedCoin.id, 'STD', type.id) }}</span>
+                  <button @click="updateCount(selectedCoin.id, 'STD', type.id, 1)" class="w-6 h-6 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-white rounded font-bold">+</button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- DESCRIZIONE -->
-        <div v-if="selectedCoin.description" class="overflow-y-auto pr-2 text-xs text-slate-300 space-y-2 bg-slate-900/30 p-3 rounded-lg border border-slate-700/30 mb-4">
-          <span class="font-semibold text-slate-400 block mb-1">Descrizione:</span>
-          <p class="leading-relaxed">{{ selectedCoin.description }}</p>
-        </div>
+          <!-- DETTAGLI TECNICI MONETA -->
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+              <div class="bg-slate-900/40 p-2.5 rounded border border-slate-700/40">
+                <span class="block text-slate-500 mb-0.5">Tiratura</span>
+                <span class="font-semibold text-slate-200">{{ selectedCoin.mintage > 0 ? formatNumber(selectedCoin.mintage) + ' pz' : 'N/D' }}</span>
+              </div>
+              <div class="bg-slate-900/40 p-2.5 rounded border border-slate-700/40">
+                <span class="block text-slate-500 mb-0.5">Emissione</span>
+                <span class="font-semibold text-slate-200">{{ selectedCoin.issue_date || 'N/D' }}</span>
+              </div>
+              <div class="bg-slate-900/40 p-2.5 rounded border border-slate-700/40 col-span-2 sm:col-span-1">
+                <span class="block text-slate-500 mb-0.5">Incisore/Disegnatore</span>
+                <span class="font-semibold text-slate-200 truncate block" :title="selectedCoin.designer">{{ selectedCoin.designer || 'N/D' }}</span>
+              </div>
+            </div>
 
-        <div v-if="selectedCoin.designer" class="text-xs text-slate-400">
-          <span class="text-slate-500">Disegnatore:</span> {{ selectedCoin.designer }}
+            <div v-if="selectedCoin.description" class="text-xs text-slate-300 bg-slate-900/30 p-3 rounded-lg border border-slate-700/30 leading-relaxed">
+              <span class="font-semibold text-slate-400 block mb-1">Descrizione:</span>
+              <p>{{ selectedCoin.description }}</p>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -225,57 +294,36 @@
   <script>
     const { createApp, ref, computed, onMounted, onUpdated } = Vue;
 
-    // Mappatura codici ISO/sigle Paese -> Nome italiano per esteso
     const countryNamesMap = {
-      'IT': 'Italia',
-      'ITA': 'Italia',
-      'DE': 'Germania',
-      'DEU': 'Germania',
-      'FR': 'Francia',
-      'FRA': 'Francia',
-      'ES': 'Spagna',
-      'ESP': 'Spagna',
-      'AT': 'Austria',
-      'AUT': 'Austria',
-      'BE': 'Belgio',
-      'BEL': 'Belgio',
-      'CY': 'Cipro',
-      'CYP': 'Cipro',
-      'EE': 'Estonia',
-      'EST': 'Estonia',
-      'FI': 'Finlandia',
-      'FIN': 'Finlandia',
-      'GR': 'Grecia',
-      'GRC': 'Grecia',
-      'IE': 'Irlanda',
-      'IRL': 'Irlanda',
-      'LV': 'Lettonia',
-      'LVA': 'Lettonia',
-      'LT': 'Lituania',
-      'LTU': 'Lituania',
-      'LU': 'Lussemburgo',
-      'LUX': 'Lussemburgo',
-      'MT': 'Malta',
-      'MLT': 'Malta',
-      'MC': 'Monaco',
-      'MCO': 'Monaco',
-      'NL': 'Paesi Bassi',
-      'NLD': 'Paesi Bassi',
-      'PT': 'Portogallo',
-      'PRT': 'Portogallo',
-      'SM': 'San Marino',
-      'SMR': 'San Marino',
-      'SK': 'Slovacchia',
-      'SVK': 'Slovacchia',
-      'SI': 'Slovenia',
-      'SVN': 'Slovenia',
-      'VA': 'Vaticano',
-      'VAT': 'Vaticano',
-      'HR': 'Croazia',
-      'HRV': 'Croazia',
-      'AND': 'Andorra',
-      'AD': 'Andorra'
+      'IT': 'Italia', 'ITA': 'Italia', 'DE': 'Germania', 'DEU': 'Germania',
+      'FR': 'Francia', 'FRA': 'Francia', 'ES': 'Spagna', 'ESP': 'Spagna',
+      'AT': 'Austria', 'AUT': 'Austria', 'BE': 'Belgio', 'BEL': 'Belgio',
+      'CY': 'Cipro', 'CYP': 'Cipro', 'EE': 'Estonia', 'EST': 'Estonia',
+      'FI': 'Finlandia', 'FIN': 'Finlandia', 'GR': 'Grecia', 'GRC': 'Grecia',
+      'IE': 'Irlanda', 'IRL': 'Irlanda', 'LV': 'Lettonia', 'LVA': 'Lettonia',
+      'LT': 'Lituania', 'LTU': 'Lituania', 'LU': 'Lussemburgo', 'LUX': 'Lussemburgo',
+      'MT': 'Malta', 'MLT': 'Malta', 'MC': 'Monaco', 'MCO': 'Monaco',
+      'NL': 'Paesi Bassi', 'NLD': 'Paesi Bassi', 'PT': 'Portogallo', 'PRT': 'Portogallo',
+      'SM': 'San Marino', 'SMR': 'San Marino', 'SK': 'Slovacchia', 'SVK': 'Slovacchia',
+      'SI': 'Slovenia', 'SVN': 'Slovenia', 'VA': 'Vaticano', 'VAT': 'Vaticano',
+      'HR': 'Croazia', 'HRV': 'Croazia', 'AND': 'Andorra', 'AD': 'Andorra'
     };
+
+    const germanMints = [
+      { code: 'A', city: 'Berlino' },
+      { code: 'D', city: 'Monaco' },
+      { code: 'F', city: 'Stoccarda' },
+      { code: 'G', city: 'Karlsruhe' },
+      { code: 'J', city: 'Amburgo' }
+    ];
+
+    // Tipi di stato/condizione estesi con "Usata"
+    const conditionTypes = [
+      { id: 'used', label: 'Usata / Circolata' },
+      { id: 'unc', label: 'UNC / Fior di Conio' },
+      { id: 'proof', label: 'Proof / FDC' },
+      { id: 'coincard', label: 'Coincard / Blister' }
+    ];
 
     createApp({
       setup() {
@@ -285,20 +333,88 @@
         const selectedCountry = ref('');
         const selectedYear = ref('');
         const selectedStatus = ref('');
+        const collectionFilter = ref('all');
         const selectedCoin = ref(null);
+        const fileInput = ref(null);
+        
+        const collection = ref({});
+
+        const loadCollection = () => {
+          try {
+            const saved = localStorage.getItem('euro_coins_collection');
+            if (saved) {
+              collection.value = JSON.parse(saved);
+            }
+          } catch (e) {
+            console.error("Errore nel caricamento della collezione:", e);
+          }
+        };
+
+        const saveCollection = () => {
+          localStorage.setItem('euro_coins_collection', JSON.stringify(collection.value));
+        };
+
+        // ESPORTAZIONE JSON COLLEZIONE
+        const exportCollection = () => {
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(collection.value, null, 2));
+          const downloadAnchor = document.createElement('a');
+          downloadAnchor.setAttribute("href", dataStr);
+          downloadAnchor.setAttribute("download", `collezione_2euro_${new Date().toISOString().slice(0, 10)}.json`);
+          document.body.appendChild(downloadAnchor);
+          downloadAnchor.click();
+          downloadAnchor.remove();
+        };
+
+        // IMPORTAZIONE JSON COLLEZIONE
+        const triggerImport = () => {
+          if (fileInput.value) {
+            fileInput.value.click();
+          }
+        };
+
+        const importCollection = (event) => {
+          const file = event.target.files[0];
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const importedData = JSON.parse(e.target.result);
+              if (typeof importedData === 'object' && importedData !== null) {
+                if (confirm("Attenzione: caricando questo file sovrascriverai i dati della collezione attuale. Continuare?")) {
+                  collection.value = importedData;
+                  saveCollection();
+                  alert("Collezione importata con successo!");
+                }
+              } else {
+                alert("Il file caricato non contiene un formato collezione valido.");
+              }
+            } catch (err) {
+              alert("Errore nella lettura del file JSON: " + err.message);
+            }
+          };
+          reader.readAsText(file);
+          // Resetta il valore dell'input file per permettere caricamenti consecutivi dello stesso file
+          event.target.value = '';
+        };
 
         const fetchCoins = async () => {
           try {
-            // Aggiungiamo il timestamp per evitare problemi di cache durante lo sviluppo
             const res = await fetch(`catalog.json?t=${Date.now()}`);
             if (!res.ok) throw new Error(`HTTP status ${res.status}`);
             coins.value = await res.json();
           } catch (e) {
-            console.error("Errore durante il caricamento di catalog.json:", e);
+            console.error("Errore nel caricamento del catalogo:", e);
           } finally {
             loading.value = false;
             refreshIcons();
           }
+        };
+
+        const isGermany = (code) => {
+          if (!code) return false;
+          const c = String(code).toUpperCase().trim();
+          return c === 'DE' || c === 'DEU' || c === 'GERMANIA';
         };
 
         const getCountryName = (codeOrName) => {
@@ -307,14 +423,56 @@
           return countryNamesMap[codeUpper] || codeOrName;
         };
 
+        const getQuantity = (coinId, mintCode, typeId) => {
+          return collection.value[coinId]?.[mintCode]?.[typeId] || 0;
+        };
+
+        const updateCount = (coinId, mintCode, typeId, delta) => {
+          if (!collection.value[coinId]) {
+            collection.value[coinId] = {};
+          }
+          if (!collection.value[coinId][mintCode]) {
+            collection.value[coinId][mintCode] = { used: 0, unc: 0, proof: 0, coincard: 0 };
+          }
+          
+          const current = collection.value[coinId][mintCode][typeId] || 0;
+          const updated = Math.max(0, current + delta);
+          collection.value[coinId][mintCode][typeId] = updated;
+
+          saveCollection();
+        };
+
+        const getMintTotal = (coinId, mintCode) => {
+          const mintData = collection.value[coinId]?.[mintCode];
+          if (!mintData) return 0;
+          return (mintData.used || 0) + (mintData.unc || 0) + (mintData.proof || 0) + (mintData.coincard || 0);
+        };
+
+        const getCoinTotalCount = (coinId) => {
+          const coinData = collection.value[coinId];
+          if (!coinData) return 0;
+          let total = 0;
+          for (const mintKey in coinData) {
+            for (const typeKey in coinData[mintKey]) {
+              total += coinData[mintKey][typeKey] || 0;
+            }
+          }
+          return total;
+        };
+
+        const totalOwnedPieces = computed(() => {
+          let grandTotal = 0;
+          for (const coinId in collection.value) {
+            grandTotal += getCoinTotalCount(coinId);
+          }
+          return grandTotal;
+        });
+
         const availableCountries = computed(() => {
           const set = new Set(coins.value.map(c => c.country));
           return Array.from(set)
             .filter(Boolean)
-            .map(code => ({
-              code: code,
-              name: getCountryName(code)
-            }))
+            .map(code => ({ code, name: getCountryName(code) }))
             .sort((a, b) => a.name.localeCompare(b.name, 'it'));
         });
 
@@ -332,12 +490,20 @@
             const matchesYear = !selectedYear.value || c.year == selectedYear.value;
             const matchesStatus = !selectedStatus.value || c.status === selectedStatus.value;
 
-            return matchesSearch && matchesCountry && matchesYear && matchesStatus;
+            const ownedCount = getCoinTotalCount(c.id);
+            let matchesCollection = true;
+            if (collectionFilter.value === 'owned') {
+              matchesCollection = ownedCount > 0;
+            } else if (collectionFilter.value === 'missing') {
+              matchesCollection = ownedCount === 0;
+            }
+
+            return matchesSearch && matchesCountry && matchesYear && matchesStatus && matchesCollection;
           });
         });
 
         const hasActiveFilters = computed(() => {
-          return searchQuery.value || selectedCountry.value || selectedYear.value || selectedStatus.value;
+          return searchQuery.value || selectedCountry.value || selectedYear.value || selectedStatus.value || collectionFilter.value !== 'all';
         });
 
         const resetFilters = () => {
@@ -345,11 +511,10 @@
           selectedCountry.value = '';
           selectedYear.value = '';
           selectedStatus.value = '';
+          collectionFilter.value = 'all';
         };
 
-        const formatNumber = (num) => {
-          return new Intl.NumberFormat('it-IT').format(num || 0);
-        };
+        const formatNumber = (num) => new Intl.NumberFormat('it-IT').format(num || 0);
 
         const openModal = (coin) => {
           selectedCoin.value = coin;
@@ -361,14 +526,11 @@
         };
 
         const refreshIcons = () => {
-          setTimeout(() => { 
-            if (window.lucide) {
-              lucide.createIcons();
-            }
-          }, 50);
+          setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 50);
         };
 
         onMounted(() => {
+          loadCollection();
           fetchCoins();
         });
 
@@ -383,16 +545,29 @@
           selectedCountry,
           selectedYear,
           selectedStatus,
+          collectionFilter,
           selectedCoin,
-          getCountryName,
+          fileInput,
+          germanMints,
+          conditionTypes,
           availableCountries,
           availableYears,
           filteredCoins,
           hasActiveFilters,
+          totalOwnedPieces,
+          getCountryName,
+          isGermany,
+          getQuantity,
+          updateCount,
+          getMintTotal,
+          getCoinTotalCount,
           resetFilters,
           formatNumber,
           openModal,
-          closeModal
+          closeModal,
+          exportCollection,
+          triggerImport,
+          importCollection
         };
       }
     }).mount('#app');
