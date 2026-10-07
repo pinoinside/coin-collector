@@ -8,14 +8,14 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 
+# User-Agent strictly compliant with Wikimedia User-Agent policy
 HEADERS = {
-    "User-Agent": "CoinCollectorApp/1.0 (https://github.com/pinoinside/coin-collector; contact@example.com)"
+    "User-Agent": "EuroCoinCollectorBot/1.0 (https://github.com/pinoinside/coin-collector; contact@example.com)"
 }
 
 CURRENT_YEAR = datetime.now().year
 BASE_URL = "https://it.wikipedia.org"
 
-# Usa percorsi assoluti basati sulla cartella dove risiede lo script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PUBLIC_DIR = os.path.join(BASE_DIR, "public")
 IMAGES_DIR = os.path.join(PUBLIC_DIR, "images")
@@ -85,8 +85,10 @@ def extract_image_url(cell):
             src = "https:" + src
         elif src.startswith("/"):
             src = BASE_URL + src
-            
-    return src
+    
+    # Rimuovi parametri di tracciamento o trasformazione URL
+    clean_src = src.split('?')[0]
+    return clean_src
 
 def download_and_save_image(remote_url: str, coin_id: str, max_retries: int = 3) -> str:
     if not remote_url:
@@ -94,13 +96,14 @@ def download_and_save_image(remote_url: str, coin_id: str, max_retries: int = 3)
     
     os.makedirs(IMAGES_DIR, exist_ok=True)
 
+    # Pulizia URL
+    clean_url = remote_url.split('?')[0]
     ext = ".jpg"
-    clean_url = remote_url.split('?')[0].lower()
-    if clean_url.endswith('.png'):
+    if clean_url.lower().endswith('.png'):
         ext = ".png"
-    elif clean_url.endswith('.webp'):
+    elif clean_url.lower().endswith('.webp'):
         ext = ".webp"
-    elif clean_url.endswith('.svg'):
+    elif clean_url.lower().endswith('.svg'):
         ext = ".svg"
 
     filename = f"{coin_id}{ext}"
@@ -113,20 +116,20 @@ def download_and_save_image(remote_url: str, coin_id: str, max_retries: int = 3)
     backoff = 2
     for attempt in range(max_retries):
         try:
-            time.sleep(0.2)
-            res = requests.get(remote_url, headers=HEADERS, timeout=12)
+            time.sleep(0.3)
+            res = requests.get(clean_url, headers=HEADERS, timeout=15)
             
             if res.status_code == 200:
                 with open(local_path, "wb") as f:
                     f.write(res.content)
                 print(f"  [+] Scaricata immagine per {coin_id} -> {filename}")
                 return relative_url
-            elif res.status_code == 429:
-                print(f"  [!] Rate limit (429) per {coin_id}. Attesa di {backoff}s...")
+            elif res.status_code in [403, 429]:
+                print(f"  [!] HTTP {res.status_code} per {coin_id}. Retry tra {backoff}s...")
                 time.sleep(backoff)
                 backoff *= 2
             else:
-                print(f"  [!] HTTP {res.status_code} per {remote_url}")
+                print(f"  [!] HTTP {res.status_code} per {clean_url}")
                 break
         except Exception as e:
             print(f"  [!] Errore per {coin_id}: {e}")
@@ -323,8 +326,6 @@ def scrape_year_page(url):
 def main():
     os.makedirs(PUBLIC_DIR, exist_ok=True)
     os.makedirs(IMAGES_DIR, exist_ok=True)
-
-    print(f"Directory destinazione: {IMAGES_DIR}")
 
     yearly_urls = get_yearly_page_urls()
     print(f"Analisi di {len(yearly_urls)} pagine annuali...")
