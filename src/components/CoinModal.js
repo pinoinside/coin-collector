@@ -36,7 +36,7 @@ export default {
     };
   },
   template: `
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md" @click.self="$emit('close')">
+    <div class="fixed inset-x-0 inset-y-0 h-screen w-screen z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md" @click.self="$emit('close')">
       <div class="bg-slate-800 border border-slate-700/80 rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl relative max-h-[90vh] flex flex-col justify-between overflow-hidden">
         
         <!-- HEADER MODALE -->
