@@ -4,6 +4,7 @@ import os
 import re
 from datetime import datetime
 import requests
+import unicodedata
 from bs4 import BeautifulSoup
 
 HEADERS = {
@@ -75,9 +76,27 @@ def extract_image_url(cell):
             
     return src
 
+import hashlib
+import re
+import unicodedata
+
+def normalize_title_for_id(title: str) -> str:
+    """Normalizza aggressivamente il titolo rimuovendo accenti, punteggiatura e spazi extra."""
+    if not title:
+        return ""
+    # Converti in minuscolo
+    text = title.lower().strip()
+    # Rimuovi accenti / caratteri diatesici
+    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
+    # Mantieni solo lettere e cifre
+    text = re.sub(r'[^a-z0-9]', '', text)
+    return text
+
 def generate_coin_id(country: str, year: int, title: str) -> str:
-    """Genera un ID deterministico univoco SHA-256 per garantire che non cambi mai nelle future esecuzioni."""
-    raw_key = f"{country.strip().lower()}_{year}_{title.strip().lower()}"
+    """Genera un ID deterministico SHA-256 ultra-stabile basato su paese, anno e titolo normalizzato."""
+    clean_country = country.strip().upper()
+    clean_title = normalize_title_for_id(title)
+    raw_key = f"{clean_country}_{year}_{clean_title}"
     return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()[:12]
 
 def get_yearly_page_urls():
