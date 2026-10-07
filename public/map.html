@@ -59,7 +59,7 @@
     <!-- MAIN CONTENT -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
       
-      <!-- MAP CONTAINER (Occupazione full-height/width del riquadro) -->
+      <!-- MAP CONTAINER -->
       <div class="flex-1 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-4 flex flex-col justify-between relative shadow-xl min-h-[550px] overflow-hidden">
         
         <!-- CONTROLLI ZOOM / INFORMAZIONI GESTI -->
@@ -86,7 +86,7 @@
         </div>
 
         <!-- SVG MAP HOLDER FULL SIZE -->
-        <div id="map-holder" class="w-full h-full flex-1 flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing">
+        <div id="map-holder" class="w-full h-full flex-1 flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing min-h-[450px]">
           <div v-if="mapLoading" class="text-slate-400 text-xs flex items-center gap-2">
             <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-indigo-400"></i> Caricamento mappa...
           </div>
@@ -141,7 +141,7 @@
   </div>
 
   <script>
-    const { createApp, ref, computed, onMounted } = Vue;
+    const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
     const countryNamesMap = {
       'IT': 'Italia', 'DE': 'Germania', 'FR': 'Francia', 'ES': 'Spagna',
@@ -176,10 +176,18 @@
             const saved = localStorage.getItem('euro_coins_collection');
             if (saved) collection.value = JSON.parse(saved);
 
-            const res = await fetch(`catalog.json?t=${Date.now()}`);
+            // Tenta il caricamento con fallback di percorso per GitHub Pages
+            let res = await fetch(`catalog.json?t=${Date.now()}`);
+            if (!res.ok) {
+              res = await fetch(`./catalog.json?t=${Date.now()}`);
+            }
+            if (!res.ok) {
+              res = await fetch(`../catalog.json?t=${Date.now()}`);
+            }
+            
             coins.value = await res.json();
           } catch (e) {
-            console.error("Errore nel caricamento dati:", e);
+            console.error("Errore nel caricamento dati del catalogo:", e);
           }
         };
 
@@ -235,8 +243,8 @@
         const renderMap = async () => {
           try {
             const container = document.getElementById("map-holder");
-            const width = container.clientWidth || 800;
-            const height = container.clientHeight || 550;
+            const width = Math.max(container.clientWidth || 0, 700);
+            const height = Math.max(container.clientHeight || 0, 500);
 
             svgSelection = d3.select("#map-holder")
               .html("")
@@ -246,12 +254,10 @@
               .attr("viewBox", `0 0 ${width} ${height}`)
               .attr("preserveAspectRatio", "xMidYMid meet");
 
-            // Gruppo principale che conterrà la mappa e subirà la trasformazione di pan e zoom
             gSelection = svgSelection.append("g");
 
-            // Configurazione Pan e Zoom
             zoomBehavior = d3.zoom()
-              .scaleExtent([1, 10]) // Limiti di ingrandimento (da 1x a 10x)
+              .scaleExtent([1, 10])
               .translateExtent([[0, 0], [width, height]])
               .on("zoom", (event) => {
                 gSelection.attr("transform", event.transform);
@@ -259,14 +265,93 @@
 
             svgSelection.call(zoomBehavior);
 
-            // Proiezione centrata sull'Europa
             const projection = d3.geoMercator()
               .center([14, 52])
-              .scale(width * 1.1)
+              .scale(width * 1.05)
               .translate([width / 2, height / 2]);
 
             const path = d3.geoPath().projection(projection);
 
-            // Carichiamo la mappa TopoJSON
             const topoData = await d3.json("https://unpkg.com/world-atlas@2.0.2/countries-50m.json");
-            const countries = topo
+            const countries = topojson.feature(topoData, topoData.objects.countries).features;
+
+            const colorScale = d3.scaleSequential()
+              .domain([0, 100])
+              .interpolator(d3.interpolateRgb("#334155", "#10b981"));
+
+            const statsByNumericIso = {};
+            countryStats.value.forEach(s => {
+              const numIso = isoNumericMap[s.code];
+              if (numIso) statsByNumericIso[numIso] = s;
+            });
+
+            gSelection.selectAll("path")
+              .data(countries)
+              .enter()
+              .append("path")
+              .attr("d", path)
+              .attr("class", "country-shape")
+              .attr("fill", d => {
+                const stat = statsByNumericIso[d.id];
+                return stat ? colorScale(stat.percentage) : "#1e293b";
+              })
+              .attr("stroke", "#475569")
+              .attr("stroke-width", "0.5px")
+              .on("mouseover", (event, d) => {
+                const stat = statsByNumericIso[d.id];
+                if (stat) {
+                  hoveredCountry.value = stat;
+                }
+              })
+              .on("mouseleave", () => {
+                hoveredCountry.value = null;
+              });
+
+          } catch (err) {
+            console.error("Errore durante il rendering della mappa:", err);
+          } finally {
+            mapLoading.value = false;
+          }
+        };
+
+        const resetZoom = () => {
+          if (svgSelection && zoomBehavior) {
+            svgSelection.transition().duration(500).call(zoomBehavior.transform, d3.zoomIdentity);
+          }
+        };
+
+        const highlightCountry = (code) => {
+          const stat = countryStats.value.find(s => s.code === code);
+          if (stat) {
+            hoveredCountry.value = stat;
+          }
+        };
+
+        const unhighlightCountry = () => {
+          hoveredCountry.value = null;
+        };
+
+        onMounted(async () => {
+          await loadData();
+          await nextTick();
+          // Attende il calcolo effettivo del layout prima di renderizzare la mappa D3
+          requestAnimationFrame(() => {
+            renderMap();
+          });
+          if (window.lucide) lucide.createIcons();
+        });
+
+        return {
+          countryStats,
+          overallPercentage,
+          hoveredCountry,
+          mapLoading,
+          resetZoom,
+          highlightCountry,
+          unhighlightCountry
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
