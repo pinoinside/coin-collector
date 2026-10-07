@@ -62,7 +62,7 @@ export default {
           .append("svg")
           .attr("width", "100%")
           .attr("height", "100%")
-          .attr("viewBox", `0 0 ${width}${height}`)
+          .attr("viewBox", `0 0 ${width} ${height}`)
           .attr("preserveAspectRatio", "xMidYMid meet");
 
         gSelection = svgSelection.append("g");
@@ -201,4 +201,35 @@ export default {
       <div class="w-full lg:w-80 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-4 flex flex-col max-h-[600px] shadow-xl">
         <h2 class="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
           <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+          </svg> Dettaglio per Paese
+        </h2>
+
+        <div class="overflow-y-auto pr-1 flex-1 space-y-2">
+          <div 
+            v-for="stat in countryStats" 
+            :key="stat.code"
+            @mouseenter="hoveredCountry = stat"
+            @mouseleave="hoveredCountry = null"
+            class="bg-slate-900/60 border border-slate-700/40 hover:border-indigo-500/50 p-2.5 rounded-xl transition-all flex items-center justify-between text-xs cursor-pointer"
+          >
+            <div>
+              <div class="font-bold text-slate-200">{{ stat.name }}</div>
+              <div class="text-[11px] text-slate-400">{{ stat.owned }} / {{ stat.total }} monete</div>
+            </div>
+            
+            <div class="text-right">
+              <span class="font-mono font-bold text-sm" :class="stat.percentage === 100 ? 'text-emerald-400' : 'text-indigo-300'">
+                {{ stat.percentage }}%
+              </span>
+              <div class="w-16 bg-slate-700 h-1.5 rounded-full overflow-hidden mt-1">
+                <div class="bg-indigo-500 h-full rounded-full" :style="{ width: stat.percentage + '%' }"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  `
+};
