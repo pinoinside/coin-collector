@@ -54,11 +54,13 @@ export default {
         const container = mapHolder.value;
         if (!container) return;
 
+        // Pulizia safe senza distruggere i riferimenti di Vue
+        container.innerHTML = '';
+
         const width = Math.max(container.clientWidth || 0, 700);
         const height = Math.max(container.clientHeight || 0, 500);
 
         svgSelection = d3.select(container)
-          .html("")
           .append("svg")
           .attr("width", "100%")
           .attr("height", "100%")
@@ -71,7 +73,7 @@ export default {
           .scaleExtent([0.8, 12])
           .translateExtent([[ -width, -height ], [ width * 2, height * 2 ]])
           .on("zoom", (event) => {
-            gSelection.attr("transform", event.transform);
+            if (gSelection) gSelection.attr("transform", event.transform);
           });
 
         svgSelection.call(zoomBehavior);
@@ -131,9 +133,10 @@ export default {
 
     onMounted(async () => {
       await nextTick();
-      requestAnimationFrame(() => {
+      // Un piccolo timeout assicura che il router e il layout abbiano finito il montaggio nel DOM
+      setTimeout(() => {
         renderMap();
-      });
+      }, 50);
     });
 
     return {
@@ -175,12 +178,13 @@ export default {
           </div>
         </div>
 
-        <!-- SVG HOLDER -->
-        <div ref="mapHolder" class="w-full h-full flex-1 flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing min-h-[450px]">
-          <div v-if="mapLoading" class="text-slate-400 text-xs flex items-center gap-2">
-            <div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div> Caricamento mappa...
-          </div>
+        <!-- OVERLAY CARICAMENTO (SEPARATO DA D3) -->
+        <div v-if="mapLoading" class="absolute inset-0 z-20 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center text-slate-400 text-xs gap-2">
+          <div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div> Caricamento mappa...
         </div>
+
+        <!-- SVG HOLDER (RISERVATO ESCLUSIVAMENTE A D3) -->
+        <div ref="mapHolder" class="w-full h-full flex-1 flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing min-h-[450px]"></div>
 
         <!-- LEGENDA -->
         <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400 pt-3 border-t border-slate-700/40 z-10 bg-slate-800/30 -mx-4 -mb-4 px-4 pb-3">
