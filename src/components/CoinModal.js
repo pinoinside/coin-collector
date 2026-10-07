@@ -65,8 +65,8 @@ export default {
             <div class="text-center">
               <h2 class="text-base font-bold text-slate-100 mb-3">{{ coin.title }}</h2>
               
-              <!-- IMMAGINE INGRANDITA -->
-              <div class="w-48 h-48 mx-auto relative flex items-center justify-center bg-slate-900 rounded-full p-2 border-2 border-indigo-500/40 shadow-2xl">
+              <!-- IMMAGINE INGRANDITA CON SFONDO TRASPARENTE -->
+              <div class="w-48 h-48 mx-auto relative flex items-center justify-center bg-white rounded-full p-3 border-4 border-indigo-500/30 shadow-2xl overflow-hidden">
                 <img 
                   v-if="coin.image_url" 
                   :src="coin.image_url" 
