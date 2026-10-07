@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
 import { useCatalog } from '../composables/useCatalog.js';
@@ -14,6 +14,7 @@ export default {
     const hoveredCountry = ref(null);
     const mapLoading = ref(true);
 
+    // Variabili D3 totalmente disaccoppiate dallo stato reattivo di Vue
     let svgSelection = null;
     let gSelection = null;
     let zoomBehavior = null;
@@ -50,34 +51,36 @@ export default {
     });
 
     const renderMap = async () => {
+      const container = mapHolder.value;
+      if (!container) return;
+
+      // Pulisce solo gli elementi figli senza toccare il nodo genitore gestito da Vue
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+
+      const width = Math.max(container.clientWidth || 0, 700);
+      const height = Math.max(container.clientHeight || 0, 500);
+
+      svgSelection = d3.select(container)
+        .append("svg")
+        .attr("width", "100%")
+        .attr("height", "100%")
+        .attr("viewBox", `0 0 ${width} ${height}`)
+        .attr("preserveAspectRatio", "xMidYMid meet");
+
+      gSelection = svgSelection.append("g");
+
+      zoomBehavior = d3.zoom()
+        .scaleExtent([0.8, 12])
+        .translateExtent([[ -width, -height ], [ width * 2, height * 2 ]])
+        .on("zoom", (event) => {
+          if (gSelection) gSelection.attr("transform", event.transform);
+        });
+
+      svgSelection.call(zoomBehavior);
+
       try {
-        const container = mapHolder.value;
-        if (!container) return;
-
-        // Pulizia safe senza distruggere i riferimenti di Vue
-        container.innerHTML = '';
-
-        const width = Math.max(container.clientWidth || 0, 700);
-        const height = Math.max(container.clientHeight || 0, 500);
-
-        svgSelection = d3.select(container)
-          .append("svg")
-          .attr("width", "100%")
-          .attr("height", "100%")
-          .attr("viewBox", `0 0 ${width} ${height}`)
-          .attr("preserveAspectRatio", "xMidYMid meet");
-
-        gSelection = svgSelection.append("g");
-
-        zoomBehavior = d3.zoom()
-          .scaleExtent([0.8, 12])
-          .translateExtent([[ -width, -height ], [ width * 2, height * 2 ]])
-          .on("zoom", (event) => {
-            if (gSelection) gSelection.attr("transform", event.transform);
-          });
-
-        svgSelection.call(zoomBehavior);
-
         const topoData = await d3.json("https://unpkg.com/world-atlas@2.0.2/countries-50m.json");
         const countries = topojson.feature(topoData, topoData.objects.countries).features;
 
@@ -119,7 +122,7 @@ export default {
           });
 
       } catch (err) {
-        console.error("Errore durante il rendering della mappa:", err);
+        console.error("Errore durante il caricamento o rendering della mappa:", err);
       } finally {
         mapLoading.value = false;
       }
@@ -131,12 +134,18 @@ export default {
       }
     };
 
-    onMounted(async () => {
-      await nextTick();
-      // Un piccolo timeout assicura che il router e il layout abbiano finito il montaggio nel DOM
-      setTimeout(() => {
-        renderMap();
-      }, 50);
+    onMounted(() => {
+      nextTick(() => {
+        setTimeout(() => {
+          renderMap();
+        }, 100);
+      });
+    });
+
+    onUnmounted(() => {
+      svgSelection = null;
+      gSelection = null;
+      zoomBehavior = null;
     });
 
     return {
@@ -171,20 +180,20 @@ export default {
           v-show="hoveredCountry" 
           class="absolute top-6 left-6 z-10 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-xl shadow-2xl pointer-events-none space-y-1 min-w-[180px]"
         >
-          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">{{ hoveredCountry?.name || '' }}</div>
-          <div class="text-lg font-extrabold text-indigo-400">{{ hoveredCountry?.percentage || 0 }}%</div>
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">{{ hoveredCountry ? hoveredCountry.name : '' }}</div>
+          <div class="text-lg font-extrabold text-indigo-400">{{ hoveredCountry ? hoveredCountry.percentage : 0 }}%</div>
           <div class="text-xs text-slate-300">
-            <span class="font-semibold text-emerald-400">{{ hoveredCountry?.owned || 0 }}</span> / {{ hoveredCountry?.total || 0 }} monete possedute
+            <span class="font-semibold text-emerald-400">{{ hoveredCountry ? hoveredCountry.owned : 0 }}</span> / {{ hoveredCountry ? hoveredCountry.total : 0 }} monete possedute
           </div>
         </div>
 
-        <!-- OVERLAY CARICAMENTO (SEPARATO DA D3) -->
+        <!-- OVERLAY CARICAMENTO -->
         <div v-if="mapLoading" class="absolute inset-0 z-20 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center text-slate-400 text-xs gap-2">
           <div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div> Caricamento mappa...
         </div>
 
-        <!-- SVG HOLDER (RISERVATO ESCLUSIVAMENTE A D3) -->
-        <div ref="mapHolder" class="w-full h-full flex-1 flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing min-h-[450px]"></div>
+        <!-- SVG HOLDER CON v-once (Vue ignora i cambiamenti interni di D3) -->
+        <div v-once ref="mapHolder" class="w-full h-full flex-1 flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing min-h-[450px]"></div>
 
         <!-- LEGENDA -->
         <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400 pt-3 border-t border-slate-700/40 z-10 bg-slate-800/30 -mx-4 -mb-4 px-4 pb-3">
@@ -237,3 +246,4 @@ export default {
     </div>
   `
 };
+// fixed?
