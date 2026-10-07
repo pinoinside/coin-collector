@@ -26,9 +26,9 @@ export default {
       'AD': '020', 'MC': '492', 'SM': '674', 'VA': '336'
     };
 
-    const normalizeCode = (rawCode) => {
-      if (!rawCode) return '';
-      const c = String(rawCode).toUpperCase().trim();
+    const normalizeCode = (raw) => {
+      if (!raw) return '';
+      const c = String(raw).toUpperCase().trim();
       const map = {
         'ITA': 'IT', 'ITALIA': 'IT', 'GERMANIA': 'DE', 'DEU': 'DE',
         'FRA': 'FR', 'FRANCIA': 'FR', 'ESP': 'ES', 'SPAGNA': 'ES',
@@ -50,9 +50,8 @@ export default {
       const statsMap = {};
 
       coins.value.forEach(coin => {
-        const rawCode = coin.country;
-        if (!rawCode || rawCode === 'EU') return;
-        const code = normalizeCode(rawCode);
+        const code = normalizeCode(coin.country);
+        if (!code || code === 'EU') return;
 
         if (!statsMap[code]) {
           statsMap[code] = { code, name: getCountryName(code), total: 0, owned: 0 };
@@ -162,7 +161,7 @@ export default {
           });
 
       } catch (err) {
-        console.error("Errore caricamento mappa:", err);
+        console.error("Errore nel caricamento della mappa TopoJSON:", err);
       } finally {
         mapLoading.value = false;
       }
@@ -203,13 +202,13 @@ export default {
   template: `
     <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
       
-      <!-- MAP CONTAINER -->
+      <!-- CONTENITORE MAPPA -->
       <div class="flex-1 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-4 flex flex-col justify-between relative shadow-xl min-h-[550px] overflow-hidden">
         
         <div class="absolute top-6 right-6 z-10 flex flex-col gap-2">
           <button 
             @click="resetZoom" 
-            title="Ripristina posizione e zoom" 
+            title="Ripristina zoom" 
             class="p-2.5 bg-slate-900/80 hover:bg-slate-900 backdrop-blur border border-slate-700 text-slate-200 rounded-xl shadow-lg transition-colors flex items-center justify-center"
           >
             <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -249,7 +248,7 @@ export default {
         </div>
       </div>
 
-      <!-- TABELLA DETTAGLIO PAESI -->
+      <!-- TABELLA PAESI -->
       <div class="w-full lg:w-80 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-4 flex flex-col max-h-[600px] shadow-xl">
         <h2 class="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
           <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
