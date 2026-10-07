@@ -241,11 +241,12 @@
         });
 
         
+        
         const renderMap = async () => {
           try {
             const container = document.getElementById("map-holder");
             const width = Math.max(container.clientWidth || 0, 700);
-            const height = Math.max(container.clientHeight || 0, 550);
+            const height = Math.max(container.clientHeight || 0, 500);
 
             svgSelection = d3.select("#map-holder")
               .html("")
@@ -258,23 +259,44 @@
             gSelection = svgSelection.append("g");
 
             zoomBehavior = d3.zoom()
-              .scaleExtent([1, 12])
-              .translateExtent([[0, 0], [width, height]])
+              .scaleExtent([0.8, 12])
+              .translateExtent([[ -width, -height ], [ width * 2, height * 2 ]])
               .on("zoom", (event) => {
                 gSelection.attr("transform", event.transform);
               });
 
             svgSelection.call(zoomBehavior);
 
-            // Carichiamo i dati TopoJSON
+            // Carichiamo la mappa TopoJSON
             const topoData = await d3.json("https://unpkg.com/world-atlas@2.0.2/countries-50m.json");
-            let countries = topojson.feature(topoData, topoData.objects.countries).features;
+            const countries = topojson.feature(topoData, topoData.objects.countries).features;
 
-            // Proiezione Mercatore avanzata centrata sull'Europa continentale
-            const projection = d3.geoMercator()
-              .center([13, 53.5]) // Centro geografico dell'Europa centrale (Germania/Polonia)
-              .scale(width * 1.45) // Ingrandimento mirato per riempire il rettangolo
-              .translate([width / 2, height / 2]);
+            // Rettangolo geografico REALE dell'Europa (Ovest, Sud, Est, Nord)
+            // Esclude i territori d'oltremare in Sud America o Caraibi
+            const europeGeoBoundingBox = {
+              type: "Feature",
+              geometry: {
+                type: "Polygon",
+                coordinates: [[
+                  [-10.5, 34.5], // Sud-Ovest (Portogallo/Iberia)
+                  [ 34.5, 34.5], // Sud-Est (Cipro/Grecia)
+                  [ 34.5, 70.8], // Nord-Est (Finlandia/Scandinavia)
+                  [-10.5, 70.8], // Nord-Ovest (Irlanda/Islanda)
+                  [-10.5, 34.5]
+                ]]
+              }
+            };
+
+            // Proiezione conica conforme (standard per le mappe europee)
+            const projection = d3.geoConicConformal()
+              .parallels([35, 65])
+              .rotate([-15, 0]);
+
+            // Inquadratura automatica millimetrica dentro il container con 15px di margine
+            projection.fitExtent(
+              [[15, 15], [width - 15, height - 15]],
+              europeGeoBoundingBox
+            );
 
             const path = d3.geoPath().projection(projection);
 
@@ -317,9 +339,7 @@
           }
         };
 
-            
-        
-
+      
 
         const resetZoom = () => {
           if (svgSelection && zoomBehavior) {
