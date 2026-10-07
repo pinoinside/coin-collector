@@ -8,7 +8,7 @@ export default {
   name: 'MapView',
   setup() {
     const { coins, getCountryName } = useCatalog();
-    const { ownedTotalsByCoinId } = useCollection();
+    const { collection } = useCollection();
 
     const mapHolder = ref(null);
     const hoveredCountry = ref(null);
@@ -18,30 +18,108 @@ export default {
     let gSelection = null;
     let zoomBehavior = null;
 
+    // Mappatura universale per associare i codici e nomi ai codici ISO Numerici (Topography Atlas)
     const isoNumericMap = {
-      'AT': '040', 'BE': '056', 'CY': '196', 'EE': '233', 'FI': '246',
-      'FR': '250', 'DE': '276', 'GR': '300', 'IE': '372', 'IT': '380',
-      'LV': '428', 'LT': '440', 'LU': '442', 'MT': '470', 'NL': '528',
-      'PT': '620', 'SK': '703', 'SI': '705', 'ES': '724', 'HR': '191',
-      'AD': '020', 'MC': '492', 'SM': '674', 'VA': '336'
+      'AT': '040', 'AUT': '040',
+      'BE': '056', 'BEL': '056',
+      'CY': '196', 'CYP': '196',
+      'EE': '233', 'EST': '233',
+      'FI': '246', 'FIN': '246',
+      'FR': '250', 'FRA': '250',
+      'DE': '276', 'DEU': '276', 'GERMANIA': '276',
+      'GR': '300', 'GRC': '300',
+      'IE': '372', 'IRL': '372',
+      'IT': '380', 'ITA': '380',
+      'LV': '428', 'LVA': '428',
+      'LT': '440', 'LTU': '440',
+      'LU': '442', 'LUX': '442',
+      'MT': '470', 'MLT': '470',
+      'NL': '528', 'NLD': '528',
+      'PT': '620', 'PRT': '620',
+      'SK': '703', 'SVK': '703',
+      'SI': '705', 'SVN': '705',
+      'ES': '724', 'ESP': '724',
+      'HR': '191', 'HRV': '191',
+      'AD': '020', 'AND': '020',
+      'MC': '492', 'MCO': '492',
+      'SM': '674', 'SMR': '674',
+      'VA': '336', 'VAT': '336'
     };
 
-    const countryStats = computed(() => {
-      const map = {};
-      coins.value.forEach(coin => {
-        const code = coin.country;
-        if (!code || code === 'EU') return;
+    // Helper per normalizzare qualsiasi codice Paese
+    const normalizeCountryCode = (rawCode) => {
+      if (!rawCode) return '';
+      const c = String(rawCode).toUpperCase().trim();
+      if (['IT', 'ITA', 'ITALIA'].includes(c)) return 'IT';
+      if (['DE', 'DEU', 'GERMANIA'].includes(c)) return 'DE';
+      if (['FR', 'FRA', 'FRANCIA'].includes(c)) return 'FR';
+      if (['ES', 'ESP', 'SPAGNA'].includes(c)) return 'ES';
+      if (['AT', 'AUT', 'AUSTRIA'].includes(c)) return 'AT';
+      if (['BE', 'BEL', 'BELGIO'].includes(c)) return 'BE';
+      if (['CY', 'CYP', 'CIPRO'].includes(c)) return 'CY';
+      if (['EE', 'EST', 'ESTONIA'].includes(c)) return 'EE';
+      if (['FI', 'FIN', 'FINLANDIA'].includes(c)) return 'FI';
+      if (['GR', 'GRC', 'GRECIA'].includes(c)) return 'GR';
+      if (['IE', 'IRL', 'IRLANDA'].includes(c)) return 'IE';
+      if (['LV', 'LVA', 'LETTONIA'].includes(c)) return 'LV';
+      if (['LT', 'LTU', 'LITUANIA'].includes(c)) return 'LT';
+      if (['LU', 'LUX', 'LUSSEMBURGO'].includes(c)) return 'LU';
+      if (['MT', 'MLT', 'MALTA'].includes(c)) return 'MT';
+      if (['NL', 'NLD', 'PAESI BASSI', 'OLANDA'].includes(c)) return 'NL';
+      if (['PT', 'PRT', 'PORTOGALLO'].includes(c)) return 'PT';
+      if (['SK', 'SVK', 'SLOVACCHIA'].includes(c)) return 'SK';
+      if (['SI', 'SVN', 'SLOVENIA'].includes(c)) return 'SI';
+      if (['HR', 'HRV', 'CROAZIA'].includes(c)) return 'HR';
+      if (['AD', 'AND', 'ANDORRA'].includes(c)) return 'AD';
+      if (['MC', 'MCO', 'MONACO'].includes(c)) return 'MC';
+      if (['SM', 'SMR', 'SAN MARINO'].includes(c)) return 'SM';
+      if (['VA', 'VAT', 'VATICANO'].includes(c)) return 'VA';
+      return c;
+    };
 
-        if (!map[code]) {
-          map[code] = { code, name: getCountryName(code), total: 0, owned: 0 };
+    // Mappa reattiva con calcolo in tempo reale dei pezzi posseduti
+    const countryStats = computed(() => {
+      const statsMap = {};
+
+      // 1. Inizializza i totali per moneta
+      coins.value.forEach(coin => {
+        const rawCode = coin.country;
+        if (!rawCode || rawCode === 'EU') return;
+        const normCode = normalizeCountryCode(rawCode);
+
+        if (!statsMap[normCode]) {
+          statsMap[normCode] = { 
+            code: normCode, 
+            name: getCountryName(normCode), 
+            total: 0, 
+            owned: 0 
+          };
         }
-        map[code].total += 1;
-        if ((ownedTotalsByCoinId.value[coin.id] || 0) > 0) {
-          map[code].owned += 1;
+        statsMap[normCode].total += 1;
+
+        // 2. Calcola se la moneta è posseduta analizzando la struttura della collezione
+        const coinInventory = collection.value[coin.id];
+        let isOwned = false;
+
+        if (coinInventory) {
+          // Se ha la struttura a zecche/condizioni, somma le quantità
+          Object.values(coinInventory).forEach(mintData => {
+            if (typeof mintData === 'object' && mintData !== null) {
+              Object.values(mintData).forEach(qty => {
+                if (Number(qty) > 0) isOwned = true;
+              });
+            } else if (Number(mintData) > 0) {
+              isOwned = true;
+            }
+          });
+        }
+
+        if (isOwned) {
+          statsMap[normCode].owned += 1;
         }
       });
 
-      return Object.values(map)
+      return Object.values(statsMap)
         .map(stat => ({
           ...stat,
           percentage: stat.total > 0 ? Math.round((stat.owned / stat.total) * 100) : 0
@@ -49,7 +127,7 @@ export default {
         .sort((a, b) => b.percentage - a.percentage || a.name.localeCompare(b.name, 'it'));
     });
 
-    // Mappa veloce ISO numerico -> Dati reattivi
+    // Mappatura ISO Numerico -> Dati per D3
     const statsByNumericIso = computed(() => {
       const map = {};
       countryStats.value.forEach(s => {
@@ -71,7 +149,7 @@ export default {
         .duration(300)
         .attr("fill", d => {
           const stat = statsByNumericIso.value[d.id];
-          return stat ? colorScale(stat.percentage) : "#1e293b";
+          return stat && stat.owned > 0 ? colorScale(stat.percentage) : "#1e293b";
         });
     };
 
@@ -127,7 +205,7 @@ export default {
           .attr("class", "country-shape transition-colors cursor-pointer")
           .attr("fill", d => {
             const stat = statsByNumericIso.value[d.id];
-            return stat ? colorScale(stat.percentage) : "#1e293b";
+            return stat && stat.owned > 0 ? colorScale(stat.percentage) : "#1e293b";
           })
           .attr("stroke", "#475569")
           .attr("stroke-width", "0.5px")
@@ -152,8 +230,8 @@ export default {
       }
     };
 
-    // Reattività: aggiorna i colori se i dati delle monete o della collezione cambiano
-    watch([coins, ownedTotalsByCoinId], () => {
+    // Reattività spinta: ri-colora la mappa appena la collezione o i dati del catalogo cambiano
+    watch([coins, collection], () => {
       updateMapColors();
     }, { deep: true });
 
@@ -269,4 +347,4 @@ export default {
     </div>
   `
 };
-// test
+// prova
