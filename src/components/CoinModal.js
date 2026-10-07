@@ -1,103 +1,119 @@
+import { ref, computed } from 'vue';
+import { useCollection } from '../composables/useCollection.js';
+
 export default {
-  name: 'FiltersBar',
+  name: 'CoinModal',
   props: {
-    searchQuery: { type: String, default: '' },
-    collectionFilter: { type: String, default: 'all' },
-    selectedCountry: { type: String, default: '' },
-    selectedYear: { type: [String, Number], default: '' },
-    selectedStatus: { type: String, default: '' },
-    countries: { type: Array, default: () => [] },
-    years: { type: Array, default: () => [] },
-    hasActiveFilters: { type: Boolean, default: false }
+    coin: { type: Object, required: true },
+    countryName: { type: String, default: 'Sconosciuto' }
   },
-  emits: [
-    'update:searchQuery',
-    'update:collectionFilter',
-    'update:selectedCountry',
-    'update:selectedYear',
-    'update:selectedStatus',
-    'reset'
-  ],
+  emits: ['close'],
+  setup(props, { emit }) {
+    const { getQuantity, updateCount } = useCollection();
+
+    const mints = computed(() => {
+      const c = String(props.coin.country || '').toUpperCase().trim();
+      if (['DE', 'DEU', 'GERMANIA'].includes(c)) {
+        return [
+          { code: 'A', name: 'A - Berlino' },
+          { code: 'D', name: 'D - Monaco' },
+          { code: 'F', name: 'F - Stoccarda' },
+          { code: 'G', name: 'G - Karlsruhe' },
+          { code: 'J', name: 'J - Amburgo' }
+        ];
+      }
+      return [{ code: 'STD', name: 'Standard' }];
+    });
+
+    const conditions = [
+      { id: 'unc', label: 'Circolata / UNC', desc: 'Fior di Conio / Circolata' },
+      { id: 'bu', label: 'BU / Coincard', desc: 'Brilliant Uncirculated' },
+      { id: 'proof', label: 'Proof / FS', desc: 'Fondo Specchio' }
+    ];
+
+    const increment = (mintCode, condId) => {
+      updateCount(props.coin.id, mintCode, condId, 1);
+    };
+
+    const decrement = (mintCode, condId) => {
+      updateCount(props.coin.id, mintCode, condId, -1);
+    };
+
+    const totalCoinOwned = computed(() => {
+      let total = 0;
+      mints.value.forEach(m => {
+        conditions.forEach(c => {
+          total += getQuantity(props.coin.id, m.code, c.id);
+        });
+      });
+      return total;
+    });
+
+    return {
+      mints,
+      conditions,
+      getQuantity,
+      increment,
+      decrement,
+      totalCoinOwned
+    };
+  },
   template: `
-    <section class="bg-slate-800/40 border-b border-slate-800 py-4">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-3">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
-          
-          <!-- RICERCA TESTUALE -->
-          <div class="relative lg:col-span-2">
-            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" @click.self="$emit('close')">
+      <div class="bg-slate-800 border border-slate-700/80 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col justify-between overflow-hidden">
+        
+        <!-- HEADER MODALE -->
+        <div class="flex items-start justify-between pb-4 border-b border-slate-700/50">
+          <div>
+            <span class="text-xs font-bold px-2 py-0.5 rounded bg-slate-700 text-slate-300 border border-slate-600">
+              {{ countryName }} — {{ coin.year }}
+            </span>
+            <h2 class="text-lg font-bold text-slate-100 mt-1">{{ coin.title }}</h2>
+          </div>
+          <button @click="$emit('close')" class="text-slate-400 hover:text-slate-100 p-1.5 rounded-lg hover:bg-slate-700/50 transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>
-            <input 
-              :value="searchQuery" 
-              @input="$emit('update:searchQuery', $event.target.value)"
-              type="text" 
-              placeholder="Cerca per titolo o descrizione..." 
-              class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-            />
-          </div>
-
-          <!-- FILTRO POSSESSO -->
-          <div>
-            <select 
-              :value="collectionFilter" 
-              @change="$emit('update:collectionFilter', $event.target.value)"
-              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
-            >
-              <option value="all">Tutti i pezzi</option>
-              <option value="owned">Solo in Collezione</option>
-              <option value="missing">Mancanti</option>
-            </select>
-          </div>
-
-          <!-- FILTRO PAESE -->
-          <div>
-            <select 
-              :value="selectedCountry" 
-              @change="$emit('update:selectedCountry', $event.target.value)"
-              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
-            >
-              <option value="">Tutti i Paesi ({{ countries.length }})</option>
-              <option v-for="c in countries" :key="c.code" :value="c.code">{{ c.name }}</option>
-            </select>
-          </div>
-
-          <!-- FILTRO ANNO -->
-          <div>
-            <select 
-              :value="selectedYear" 
-              @change="$emit('update:selectedYear', $event.target.value)"
-              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
-            >
-              <option value="">Tutti gli Anni</option>
-              <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
-            </select>
-          </div>
-
-          <!-- FILTRO STATO EMISSIONE -->
-          <div>
-            <select 
-              :value="selectedStatus" 
-              @change="$emit('update:selectedStatus', $event.target.value)"
-              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
-            >
-              <option value="">Tutte</option>
-              <option value="issued">Emesse</option>
-              <option value="announced">Annunciate</option>
-            </select>
-          </div>
-
-        </div>
-
-        <!-- RESET FILTRI -->
-        <div v-if="hasActiveFilters" class="flex justify-end">
-          <button @click="$emit('reset')" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium transition-colors">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-            </svg> Ripristina Filtri
           </button>
         </div>
+
+        <!-- CONTENUTO E CONTATORI -->
+        <div class="my-4 overflow-y-auto pr-1 space-y-4">
+          <div v-for="mint in mints" :key="mint.code" class="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4">
+            <div class="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-3">Zecca: {{ mint.name }}</div>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div v-for="cond in conditions" :key="cond.id" class="bg-slate-800/80 p-3 rounded-lg border border-slate-700/40 flex flex-col justify-between items-center text-center">
+                <span class="text-xs font-semibold text-slate-200">{{ cond.label }}</span>
+                <span class="text-[10px] text-slate-400 mb-2">{{ cond.desc }}</span>
+                
+                <div class="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-lg p-1">
+                  <button @click="decrement(mint.code, cond.id)" class="w-7 h-7 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center justify-center transition-colors">
+                    -
+                  </button>
+                  <span class="font-mono font-bold text-sm min-w-[20px] text-emerald-400">
+                    {{ getQuantity(coin.id, mint.code, cond.id) }}
+                  </span>
+                  <button @click="increment(mint.code, cond.id)" class="w-7 h-7 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center justify-center transition-colors">
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="pt-4 border-t border-slate-700/50 flex items-center justify-between">
+          <div class="text-sm text-slate-300">
+            Totale per questa moneta: <span class="font-bold text-emerald-400">{{ totalCoinOwned }}</span>
+          </div>
+          <button @click="$emit('close')" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-colors">
+            Fatto
+          </button>
+        </div>
+
       </div>
-    </section>
+    </div>
   `
 };

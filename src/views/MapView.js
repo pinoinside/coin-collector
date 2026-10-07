@@ -26,50 +26,48 @@ export default {
       'AD': '020', 'MC': '492', 'SM': '674', 'VA': '336'
     };
 
-    const normalizeCountryCode = (code) => {
-      if (!code) return '';
-      const c = String(code).toUpperCase().trim();
+    const normalizeCode = (rawCode) => {
+      if (!rawCode) return '';
+      const c = String(rawCode).toUpperCase().trim();
       const map = {
-        'ITA': 'IT', 'GERMANIA': 'DE', 'DEU': 'DE', 'FRA': 'FR', 'ESP': 'ES',
-        'AUT': 'AT', 'BEL': 'BE', 'CYP': 'CY', 'EST': 'EE', 'FIN': 'FI',
-        'GRC': 'GR', 'IRL': 'IE', 'LVA': 'LV', 'LTU': 'LT', 'LUX': 'LU',
-        'MLT': 'MT', 'NLD': 'NL', 'PRT': 'PT', 'SVK': 'SK', 'SVN': 'SI',
-        'HRV': 'HR', 'AND': 'AD', 'MCO': 'MC', 'SMR': 'SM', 'VAT': 'VA'
+        'ITA': 'IT', 'ITALIA': 'IT', 'GERMANIA': 'DE', 'DEU': 'DE',
+        'FRA': 'FR', 'FRANCIA': 'FR', 'ESP': 'ES', 'SPAGNA': 'ES',
+        'AUT': 'AT', 'AUSTRIA': 'AT', 'BEL': 'BE', 'BELGIO': 'BE',
+        'CYP': 'CY', 'CIPRO': 'CY', 'EST': 'EE', 'ESTONIA': 'EE',
+        'FIN': 'FI', 'FINLANDIA': 'FI', 'GRC': 'GR', 'GRECIA': 'GR',
+        'IRL': 'IE', 'IRLANDA': 'IE', 'LVA': 'LV', 'LETTONIA': 'LV',
+        'LTU': 'LT', 'LITUANIA': 'LT', 'LUX': 'LU', 'LUSSEMBURGO': 'LU',
+        'MLT': 'MT', 'MALTA': 'MT', 'NLD': 'NL', 'PAESI BASSI': 'NL',
+        'PRT': 'PT', 'PORTOGALLO': 'PT', 'SVK': 'SK', 'SLOVACCIA': 'SK',
+        'SVN': 'SI', 'SLOVENIA': 'SI', 'HRV': 'HR', 'CROAZIA': 'HR',
+        'AND': 'AD', 'ANDORRA': 'AD', 'MCO': 'MC', 'MONACO': 'MC',
+        'SMR': 'SM', 'SAN MARINO': 'SM', 'VAT': 'VA', 'VATICANO': 'VA'
       };
       return map[c] || c;
     };
 
-    // Calcolo delle statistiche per Paese
     const countryStats = computed(() => {
       const statsMap = {};
 
       coins.value.forEach(coin => {
         const rawCode = coin.country;
         if (!rawCode || rawCode === 'EU') return;
-        const normCode = normalizeCountryCode(rawCode);
+        const code = normalizeCode(rawCode);
 
-        if (!statsMap[normCode]) {
-          statsMap[normCode] = { 
-            code: normCode, 
-            name: getCountryName(normCode), 
-            total: 0, 
-            owned: 0 
-          };
+        if (!statsMap[code]) {
+          statsMap[code] = { code, name: getCountryName(code), total: 0, owned: 0 };
         }
 
-        statsMap[normCode].total += 1;
-
-        // Se possediamo almeno un pezzo di questa moneta
-        const ownedQty = ownedTotalsByCoinId.value[coin.id] || 0;
-        if (ownedQty > 0) {
-          statsMap[normCode].owned += 1;
+        statsMap[code].total += 1;
+        if ((ownedTotalsByCoinId.value[coin.id] || 0) > 0) {
+          statsMap[code].owned += 1;
         }
       });
 
       return Object.values(statsMap)
-        .map(stat => ({
-          ...stat,
-          percentage: stat.total > 0 ? Math.round((stat.owned / stat.total) * 100) : 0
+        .map(s => ({
+          ...s,
+          percentage: s.total > 0 ? Math.round((s.owned / s.total) * 100) : 0
         }))
         .sort((a, b) => b.percentage - a.percentage || a.name.localeCompare(b.name, 'it'));
     });
