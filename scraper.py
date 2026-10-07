@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import re
 from datetime import datetime
@@ -25,6 +26,12 @@ COUNTRY_MAP = {
     "portogallo": "PT", "portugal": "PT", "san marino": "SM", "slovacchia": "SK", "slovakia": "SK",
     "slovenia": "SI", "spagna": "ES", "spain": "ES", "vaticano": "VA", "città del vaticano": "VA", "vatican": "VA"
 }
+
+def generate_coin_id(country: str, year: int, title: str) -> str:
+    """Genera un ID deterministico univoco basato sulle proprietà immutabili della moneta."""
+    # Normalizza la stringa per evitare discrepanze da spazi o maiuscole/minuscole
+    raw_key = f"{country.strip().lower()}_{year}_{title.strip().lower()}"
+    return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()[:12] # Prendi i primi 12 caratteri
 
 def clean_element_text(element):
     """Sostituisce i tag <br> con uno spazio nell'elemento BS4 prima di estrarne il testo."""
@@ -207,7 +214,7 @@ def main():
         identifier = (coin["country"], coin["year"], coin["title"].lower())
         if identifier not in seen:
             seen.add(identifier)
-            coin["id"] = str(current_id)
+            coin["id"] = generate_coin_id(coin["country"], coin["year"], coin["title"]),
             current_id += 1
             final_coins.append(coin)
 
