@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
 import { useCatalog } from '../composables/useCatalog.js';
@@ -14,7 +14,6 @@ export default {
     const hoveredCountry = ref(null);
     const mapLoading = ref(true);
 
-    // Variabili D3 totalmente disaccoppiate dallo stato reattivo di Vue
     let svgSelection = null;
     let gSelection = null;
     let zoomBehavior = null;
@@ -50,11 +49,36 @@ export default {
         .sort((a, b) => b.percentage - a.percentage || a.name.localeCompare(b.name, 'it'));
     });
 
+    // Mappa veloce ISO numerico -> Dati reattivi
+    const statsByNumericIso = computed(() => {
+      const map = {};
+      countryStats.value.forEach(s => {
+        const numIso = isoNumericMap[s.code];
+        if (numIso) map[numIso] = s;
+      });
+      return map;
+    });
+
+    const updateMapColors = () => {
+      if (!gSelection) return;
+
+      const colorScale = d3.scaleSequential()
+        .domain([0, 100])
+        .interpolator(d3.interpolateRgb("#334155", "#10b981"));
+
+      gSelection.selectAll("path")
+        .transition()
+        .duration(300)
+        .attr("fill", d => {
+          const stat = statsByNumericIso.value[d.id];
+          return stat ? colorScale(stat.percentage) : "#1e293b";
+        });
+    };
+
     const renderMap = async () => {
       const container = mapHolder.value;
       if (!container) return;
 
-      // Pulisce solo gli elementi figli senza toccare il nodo genitore gestito da Vue
       while (container.firstChild) {
         container.removeChild(container.firstChild);
       }
@@ -95,12 +119,6 @@ export default {
           .domain([0, 100])
           .interpolator(d3.interpolateRgb("#334155", "#10b981"));
 
-        const statsByNumericIso = {};
-        countryStats.value.forEach(s => {
-          const numIso = isoNumericMap[s.code];
-          if (numIso) statsByNumericIso[numIso] = s;
-        });
-
         gSelection.selectAll("path")
           .data(countries)
           .enter()
@@ -108,13 +126,13 @@ export default {
           .attr("d", path)
           .attr("class", "country-shape transition-colors cursor-pointer")
           .attr("fill", d => {
-            const stat = statsByNumericIso[d.id];
+            const stat = statsByNumericIso.value[d.id];
             return stat ? colorScale(stat.percentage) : "#1e293b";
           })
           .attr("stroke", "#475569")
           .attr("stroke-width", "0.5px")
           .on("mouseover", (event, d) => {
-            const stat = statsByNumericIso[d.id];
+            const stat = statsByNumericIso.value[d.id];
             if (stat) hoveredCountry.value = stat;
           })
           .on("mouseleave", () => {
@@ -133,6 +151,11 @@ export default {
         svgSelection.transition().duration(500).call(zoomBehavior.transform, d3.zoomIdentity);
       }
     };
+
+    // Reattività: aggiorna i colori se i dati delle monete o della collezione cambiano
+    watch([coins, ownedTotalsByCoinId], () => {
+      updateMapColors();
+    }, { deep: true });
 
     onMounted(() => {
       nextTick(() => {
@@ -192,7 +215,7 @@ export default {
           <div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div> Caricamento mappa...
         </div>
 
-        <!-- SVG HOLDER CON v-once (Vue ignora i cambiamenti interni di D3) -->
+        <!-- SVG HOLDER CON v-once -->
         <div v-once ref="mapHolder" class="w-full h-full flex-1 flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing min-h-[450px]"></div>
 
         <!-- LEGENDA -->
@@ -246,4 +269,4 @@ export default {
     </div>
   `
 };
-// fixed?
+// test
