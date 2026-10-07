@@ -22,9 +22,7 @@ export function useCatalog() {
   const fetchCoins = async () => {
     loading.value = true;
     try {
-      // Usa percorso relativo per supportare sia local server sia la sotto-cartella di GitHub Pages
-      const catalogUrl = new URL('../../catalog.json', import.meta.url).href;
-      const res = await fetch(`${catalogUrl}?t=${Date.now()}`);
+      const res = await fetch(`./catalog.json?t=${Date.now()}`);
       if (!res.ok) throw new Error(`HTTP status ${res.status}`);
       coins.value = await res.json();
     } catch (e) {
