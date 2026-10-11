@@ -36,17 +36,17 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           # Verifica se il file catalogo esiste
-          if [ -f "public/catalog.json" ]; then
-            git add public/catalog.json
+          if [ -f "catalog.json" ]; then
+            git add catalog.json
             
             # Aggiunge anche la cartella immagini se esiste
-            if [ -d "public/images" ]; then
-              git add public/images/
+            if [ -d "images" ]; then
+              git add images/
             fi
             
             if ! git diff --staged --quiet; then
               # Calcola quante immagini nuove o modificate sono state aggiunte
-              NEW_IMAGES=$(git diff --staged --name-only | grep "^public/images/" | wc -l)
+              NEW_IMAGES=$(git diff --staged --name-only | grep "^images/" | wc -l)
               
               echo "Trovate modifiche da committare!"
               echo " - Catalogo aggiornato"
@@ -59,6 +59,6 @@ jobs:
               echo "Nessuna modifica rilevata nel catalogo o nelle immagini."
             fi
           else
-            echo "ERRORE: Il file public/catalog.json non esiste!"
+            echo "ERRORE: Il file catalog.json non esiste!"
             exit 1
           fi

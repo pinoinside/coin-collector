@@ -1,52 +1,121 @@
 <!DOCTYPE html>
-<html lang="it" class="h-full bg-slate-900 text-slate-100">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>2€ Commemorativi - Collezione</title>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f172a">
+    <title>Euro Coin Collector</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+    >
+    <link rel="stylesheet" href="./css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <a class="brand" href="./" aria-label="Euro Coin Collector, catalogo">
+          <span class="brand-icon" aria-hidden="true">€</span>
+          <span class="brand-name">Coin Collector</span>
+        </a>
 
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
+        <div class="header-menu" id="header-menu">
+          <nav class="main-nav" aria-label="Navigazione principale">
+            <button class="nav-button active" data-page="catalog" aria-label="Catalogo">
+              <i class="fa-solid fa-table-cells" aria-hidden="true"></i>
+              <span>Catalogo</span>
+            </button>
 
-  <!-- Font Inter -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+            <button class="nav-button" data-page="map" aria-label="Mappa">
+              <i class="fa-solid fa-map" aria-hidden="true"></i>
+              <span>Mappa</span>
+            </button>
 
-  <!-- IMPORT MAP DEFINITIVA PER GITHUB PAGES -->
-  <script type="importmap">
-  {
-    "imports": {
-      "vue": "https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.esm-browser.prod.js",
-      "vue-router": "https://cdn.jsdelivr.net/npm/vue-router@4.3.0/dist/vue-router.esm-browser.js",
-      "@vue/devtools-api": "https://cdn.jsdelivr.net/npm/@vue/devtools-api@6.6.1/+esm",
-      "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm",
-      "topojson-client": "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/+esm"
-    }
-  }
-  </script>
+            <button class="nav-button" data-page="settings" aria-label="Impostazioni">
+              <i class="fa-solid fa-gear" aria-hidden="true"></i>
+              <span>Impostazioni</span>
+            </button>
 
-  <style>
-    html, body, #app {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      min-height: 100vh;
-      background-color: #0f172a;
-      overflow-x: hidden;
-    }
-    body { font-family: 'Inter', sans-serif; }
-    [v-cloak] { display: none; }
-    .coin-img-blend {
-      mix-blend-mode: multiply;
-      filter: contrast(1.05) brightness(1.02);
-    }
-  </style>
-</head>
-<body class="h-full">
-  <div id="app" v-cloak></div>
+          </nav>
 
-  <!-- Entry Point NATIVO -->
-  <script type="module" src="./src/main.js"></script>
-</body>
+          <div class="header-count" aria-label="Pezzi posseduti">
+            <span class="count-number" id="header-owned-count">0</span>
+            <span class="count-label">pezzi</span>
+          </div>
+
+          <div class="header-actions">
+            <button
+              class="header-icon-button"
+              id="export-button"
+              aria-label="Esporta collezione"
+              title="Esporta"
+            >
+              <i class="fa-solid fa-download" aria-hidden="true"></i>
+              <span>Esporta</span>
+            </button>
+
+            <button
+              class="header-icon-button"
+              id="import-button"
+              aria-label="Importa collezione"
+              title="Importa"
+            >
+              <i class="fa-solid fa-upload" aria-hidden="true"></i>
+              <span>Importa</span>
+            </button>
+
+            <input id="import-file" type="file" accept=".json,application/json" hidden>
+          </div>
+        </div>
+
+        <button
+          class="mobile-menu-toggle"
+          id="mobile-menu-toggle"
+          aria-label="Apri il menu"
+          aria-expanded="false"
+          aria-controls="header-menu"
+          type="button"
+        >
+          <i class="fa-solid fa-bars menu-icon" aria-hidden="true"></i>
+          <i class="fa-solid fa-xmark close-icon" aria-hidden="true"></i>
+        </button>
+
+      </header>
+
+
+      <div class="mobile-menu" id="mobile-menu">
+        <!-- Il menu viene popolato con le stesse voci di navigazione
+            e le stesse azioni presenti nell'header desktop. -->
+      </div>
+
+      <main id="page-content" class="page-container">
+        <div class="loading-state">Caricamento catalogo…</div>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer-inner">
+          <span class="footer-brand">Euro Coin Collector</span>
+
+          <span class="footer-credit">
+            Crafted with ♥ by <strong>Pino Inside</strong>
+          </span>
+
+          <span class="footer-copyright">
+            © <span id="copyright-year"></span> Euro Coin Collector
+          </span>
+        </div>
+      </footer>
+    </div>
+
+    <div id="modal-root"></div>
+
+    <script type="module" src="./js/app.js"></script>
+    <script>
+      document.getElementById('copyright-year').textContent =
+        new Date().getFullYear();
+    </script>
+  </body>
 </html>
