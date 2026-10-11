@@ -8,18 +8,21 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 
-# User-Agent strictly compliant with Wikimedia User-Agent policy
+# User-Agent conforme alle policy Wikimedia. 
 HEADERS = {
-    "User-Agent": "EuroCoinCollectorBot/1.0 (https://github.com/pinoinside/coin-collector; contact@example.com)"
+    "User-Agent": "EuroCoinCollectorBot/2.0 (https://github.com/pinoinside/coin-collector; circolopuccini@gmail.com) Python-requests"
 }
 
 CURRENT_YEAR = datetime.now().year
 BASE_URL = "https://it.wikipedia.org"
 
-# Percorsi aggiornati per Opzione A (Root diretta del progetto, senza sottocartella public)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.join(BASE_DIR, "images")
 CATALOG_PATH = os.path.join(BASE_DIR, "catalog.json")
+
+# Inizializziamo una sessione persistente per gestire le connessioni in modo pulito
+session = requests.Session()
+session.headers.update(HEADERS)
 
 COUNTRY_MAP = {
     "andorra": "AD", "austria": "AT", "belgio": "BE", "belgium": "BE",
@@ -87,7 +90,6 @@ def extract_image_url(cell):
         elif src.startswith("/"):
             src = BASE_URL + src
     
-    # Rimuovi parametri di tracciamento o trasformazione URL
     clean_src = src.split('?')[0]
     return clean_src
 
@@ -97,7 +99,6 @@ def download_and_save_image(remote_url: str, coin_id: str, max_retries: int = 3)
     
     os.makedirs(IMAGES_DIR, exist_ok=True)
 
-    # Pulizia URL
     clean_url = remote_url.split('?')[0]
     ext = ".jpg"
     if clean_url.lower().endswith('.png'):
@@ -114,11 +115,12 @@ def download_and_save_image(remote_url: str, coin_id: str, max_retries: int = 3)
     if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
         return relative_url
 
-    backoff = 2
+    backoff = 3
     for attempt in range(max_retries):
         try:
-            time.sleep(0.3)
-            res = requests.get(clean_url, headers=HEADERS, timeout=15)
+            # Ritardo aumentato per evitare rate-limiting (403/429)
+            time.sleep(1.5)
+            res = session.get(clean_url, timeout=15)
             
             if res.status_code == 200:
                 with open(local_path, "wb") as f:
@@ -126,7 +128,7 @@ def download_and_save_image(remote_url: str, coin_id: str, max_retries: int = 3)
                 print(f"   [+] Scaricata immagine per {coin_id} -> {filename}")
                 return relative_url
             elif res.status_code in [403, 429]:
-                print(f"   [!] HTTP {res.status_code} per {coin_id}. Retry tra {backoff}s...")
+                print(f"   [!] HTTP {res.status_code} per {coin_id}. Blocco temporaneo rilevato, attesa di {backoff}s...")
                 time.sleep(backoff)
                 backoff *= 2
             else:
@@ -144,7 +146,8 @@ def get_yearly_page_urls():
     main_url = f"{BASE_URL}/wiki/2_euro_commemorativi"
     
     try:
-        res = requests.get(main_url, headers=HEADERS, timeout=15)
+        time.sleep(1.0)
+        res = session.get(main_url, timeout=15)
         if res.status_code == 200:
             soup = BeautifulSoup(res.content, "html.parser")
             for a in soup.find_all("a", href=True):
@@ -169,8 +172,10 @@ def scrape_year_page(url):
     print(f"Scraping anno {year}...")
     
     try:
-        res = requests.get(url, headers=HEADERS, timeout=15)
+        time.sleep(1.5)
+        res = session.get(url, timeout=15)
         if res.status_code != 200:
+            print(f"   [!] Impossibile accedere alla pagina {url} (HTTP {res.status_code})")
             return []
             
         soup = BeautifulSoup(res.content, "html.parser")
